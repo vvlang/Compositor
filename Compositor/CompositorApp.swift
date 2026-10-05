@@ -115,6 +115,8 @@ struct CompositorApp: App {
                 // Grouped: a commands builder takes at most ten items.
                 Group {
                     CommandGroup(after: .appInfo) {
+                        // 上游没有 About 面板，SwiftUI 也不会自动补一个，所以「关于」得自己加。
+                        Button("About Compositor") { AboutPanel.show() }
                         Button("Check for Updates…") { applicationDelegate.updater.checkForUpdates(nil) }
                     }
                     CommandGroup(after: .toolbar) {
