@@ -20,7 +20,9 @@ WORK="$HOME/Library/Caches/CompositorAdhoc"
 DIST="$PROJECT_DIR/dist"
 
 settings=$(xcodebuild -project "$PROJECT_DIR/$APP.xcodeproj" -scheme "$APP" -configuration Release -showBuildSettings 2>/dev/null)
-VERSION=$(print -r -- "$settings" | awk -F' = ' '/ MARKETING_VERSION = /{print $2; exit}')
+# `printf` 而非 zsh 的 `print`：CI 里这个脚本是以 `bash scripts/…` 调起的，
+# 只认 POSIX 内建命令，两种 shell 下都跑得通。
+VERSION=$(printf '%s\n' "$settings" | awk -F' = ' '/ MARKETING_VERSION = /{print $2; exit}')
 
 echo "==> $APP $VERSION"
 
