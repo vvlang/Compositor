@@ -12,6 +12,10 @@ xcuserdata/
 # macOS
 .DS_Store
 
+# Python bytecode from the localization scripts
+__pycache__/
+*.pyc
+
 # Signing material and secrets — never commit
 *.p12
 *.p8
