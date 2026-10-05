@@ -1,0 +1,116 @@
+name: Release
+
+# 打一个 ad-hoc 签名的 DMG 并挂到 GitHub Release 上。
+#
+# 与上游 scripts/release.sh 的区别：那份需要 Developer ID 证书 + Apple 公证凭据，
+# 密钥不能进仓库；这份用 ad-hoc 签名（不需要任何凭据），代价是没有公证，
+# 用户首次打开要手动放行一次 Gatekeeper。README 的「如何绕过 Gatekeeper」一节有说明。
+on:
+  push:
+    tags:
+      - 'v*'
+  # 手动触发：Actions 页面点 Run workflow。版本号从 MARKETING_VERSION 读，不用手填。
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: build and publish DMG
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: Resolve Swift packages
+        run: >
+          xcodebuild -resolvePackageDependencies
+          -project Compositor.xcodeproj
+          -scheme Compositor
+          -onlyUsePackageVersionsFromResolvedFile
+
+      # 打 ad-hoc 签名的 DMG。脚本自己会去掉 hardened runtime 再重签 ——
+      # 不去掉的话 Sparkle.framework 会在启动时被 dyld 拒绝加载。
+      - name: Build the DMG
+        run: bash scripts/package-adhoc-dmg.sh
+
+      - name: Collect version
+        id: version
+        run: |
+          settings=$(xcodebuild -project Compositor.xcodeproj -scheme Compositor \
+            -configuration Release -showBuildSettings 2>/dev/null)
+          version=$(printf '%s\n' "$settings" | awk -F' = ' '/ MARKETING_VERSION = /{print $2; exit}')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # 打 tag 触发时沿用触发它的 tag；手动触发时用版本号拼一个。
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 手动触发且该版本已发过时直接跳过，避免覆盖已发布的资产。
+      - name: Skip if this version is already published
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload the DMG
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DMG: dist/Compositor-${{ steps.version.outputs.version }}.dmg
+        run: |
+          [[ -f "$DMG" ]] || { echo "No $DMG — the build step did not produce one."; exit 1; }
+          checksum=$(shasum -a 256 "$DMG" | cut -d' ' -f1)
+          cat > notes.md <<NOTES
+          由 GitHub Actions 自动构建的 ad-hoc 签名版本。
+
+          **首次打开需要手动放行**：该构建没有 Apple Developer ID 签名，也没有公证，Gatekeeper 会拦截。
+          在 Finder 里右键点击 app → 打开，或运行：
+
+          \`\`\`sh
+          xattr -dr com.apple.quarantine /Applications/Compositor.app
+          \`\`\`
+
+          - SHA-256：\`$checksum\`
+          NOTES
+          # ad-hoc 构建没有公证，标成 pre-release，避免让人以为是官方发布版。
+          gh release create "$TAG" "$DMG" \
+            --repo "${{ github.repository }}" \
+            --title "Compositor $VERSION 中文版" \
+            --prerelease \
+            --notes-file notes.md
+
+      - name: Summary
+        if: always()
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "### Release $TAG"
+            echo
+            [[ -n "${VERSION}" ]] && echo "- 版本：$VERSION"
+            if [[ -f "dist/Compositor-${VERSION}.dmg" ]]; then
+              echo "- SHA-256：\`$(shasum -a 256 "dist/Compositor-${VERSION}.dmg" | cut -d' ' -f1)\`"
+              echo "- 大小：$(du -h "dist/Compositor-${VERSION}.dmg" | cut -f1)"
+            fi
+            echo "- 签名：ad-hoc（无 Developer ID、无公证）"
+          } >> "$GITHUB_STEP_SUMMARY"
