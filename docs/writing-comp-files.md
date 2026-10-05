@@ -1,5 +1,7 @@
 # 编写 Compositor 工程（给 AI agent 与脚本）
 
+> 🌐 **English**：[docs/writing-comp-files.zh-CN.md](docs/writing-comp-files.zh-CN.md) ｜ 简体中文（当前文件）
+
 Compositor 工程（`.comp`）是一个装满 PNG 图层和一份 `manifest.json` 的文件夹。任何能写文件的程序都能构建或修改它，而 Compositor 会随着文件改动实时刷新打开的画布。不需要插件或额外接口。
 
 ## 试一下
