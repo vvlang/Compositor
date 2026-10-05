@@ -89,6 +89,84 @@ brew install --cask robbietilton-compositor
 
 打开 `Compositor.xcodeproj` 并运行 **Compositor** scheme。
 
+## Simplified Chinese Localization
+
+> 🌐 [简体中文](README.md#简体中文本地化--simplified-chinese-localization) ｜ English (current file)
+
+This repository is a Simplified Chinese localization of upstream
+[robbietilton/Compositor](https://github.com/robbietilton/Compositor). It layers a complete
+Chinese interface on top of the upstream English release. **Application logic, the file
+format, and all `.comp` / manifest reading and writing are unchanged** — every modification
+is confined to the display layer and the translation resources.
+
+### Interface strings
+
+All interface strings live in a single file, **`Compositor/Localizable.xcstrings`** (an Xcode
+String Catalog), holding 926 zh-Hans translations. The source keeps the English originals and
+looks them up through one entry point in `L10n.swift`:
+
+```swift
+L10n.string("Brush")     // AppKit: NSMenuItem / toolTip / NSTextField
+L10n.text("Brush")       // SwiftUI: Text
+```
+
+The default language follows the system. You can switch back to English per-app under
+System Settings › General › Language & Region › Applications.
+
+### The one hard rule
+
+> **English strings must never reach a place where they are compared or persisted.**
+
+This rule shapes the entire change set. Translation happens only on **display paths**. Any
+string involved in an equality check, used as a dictionary key, or written to a `.comp`, a
+manifest, or `UserDefaults` stays English. Violating it does not crash — it fails
+**silently**, which is the hardest kind of bug to track down.
+
+The persisted identifiers include: blend mode `blendMode`, adjustment type `adjustment.kind`,
+curves/levels channels, `transform.sampling`, the HSV range (which doubles as a JSON
+dictionary key), and text alignment.
+
+### What to look at first when merging upstream
+
+A few places deliberately separate the *display value* from the *identity value*, which
+keeps future merges from upstream relatively painless. They are **pure refactors with no
+behavior change**, and the localization itself does not depend on them — upstream is free
+to decline them:
+
+| Location | Before | After |
+|---|---|---|
+| `UI/BlendModePicker.swift` | `NSMenuItem(title: rawValue)`, then reverse-lookup the enum by `title` | identity moves to `representedObject`; the title uses `localizedName` |
+| `UI/KeyboardShortcuts.swift` | `id = "\(group):\(title)"`, and `group` is also compared in logic | `id` and comparisons stay English; new `displayTitle` / `displayGroup` for display |
+| `Document/DocumentHistory.swift` | `beginEdit(_ name: String)` | parameter becomes `String.LocalizationValue`; undo names resolve on read |
+| `ContentView.swift` | a ~2,700-character nested ternary for the status hint | rewritten as a `switch`, each branch localized |
+
+### Helper scripts
+
+```sh
+python3 scripts/gen-xcstrings.py      # rescan the source, regenerate the catalog skeleton
+bash    scripts/audit-localization.sh # verify catalog keys still match the source
+bash    scripts/package-adhoc-dmg.sh   # build an ad-hoc signed DMG (no certificate, no notarization)
+```
+
+### Commit history
+
+The work is split into topic-scoped commits so upstream can cherry-pick what it wants, or
+revert a group wholesale:
+
+```
+b187379  prepare for localization without changing behavior   ← pure refactor, upstream-friendly
+b6250d3  route display sites through the catalog
+ba82f1d  localize the interface in Simplified Chinese         ← the bulk of the work
+dc2ddca  catch the strings the first pass missed
+15786f8  translate documentation to Simplified Chinese
+7cc5742 … 6093a21  translate comments (part 1–5 of 5)          ← safely droppable
+b79ae1b  build: add ad-hoc DMG packaging script
+```
+
+The **five comment-translation commits touch comments only, never code**. If upstream would
+rather not carry a translated copy, take just the first six commits; conversely, to drop the
+comment translation entirely, `git revert 7cc5742^..6093a21`.
+
 ## 发布
 
 `scripts/release.sh` 会构建 Release 版本，使用 Developer ID 签名，经 `notarytool` 公证并装订，最后打包为 `dist/Compositor-<version>.dmg`。
