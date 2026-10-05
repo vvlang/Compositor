@@ -1,29 +1,29 @@
-# Writing Compositor projects (for AI agents and scripts)
+# 编写 Compositor 工程（给 AI agent 与脚本）
 
-A Compositor project (`.comp`) is a folder of PNG layer images plus a `manifest.json`. Anything that can write files can build or edit one, and Compositor updates the open canvas as the files change. No plugin or API is involved.
+Compositor 工程（`.comp`）是一个装满 PNG 图层和一份 `manifest.json` 的文件夹。任何能写文件的程序都能构建或修改它，而 Compositor 会随着文件改动实时刷新打开的画布。不需要插件或额外接口。
 
-## Try it
+## 试一下
 
-1. Open a project in Compositor 1.3 or later (save a new canvas somewhere, e.g. `~/Desktop/demo.comp`), and keep it open.
-2. Ask an AI agent that can edit files on your Mac (Claude Code, Codex and the like):
+1. 在 Compositor 1.3 或更新版本里打开一个工程（先另存一个新画布，比如 `~/Desktop/demo.comp`），保持打开。
+2. 让一个能在你 Mac 上编辑文件的 AI agent（Claude Code、Codex 之类）做这件事：
 
-   > Read docs/writing-comp-files.md in github.com/robbietilton/Compositor, then design a moody night scene in ~/Desktop/demo.comp. Work in steps, one or two layers at a time.
+   > 读 github.com/robbietilton/Compositor 里的 docs/writing-comp-files.md，然后在 ~/Desktop/demo.comp 里画一张阴郁的夜色。一次写一两个图层，分步进行。
 
-3. Watch the canvas. Each time the agent writes the project, Compositor reloads it, usually within half a second.
+3. 盯着画布。每次 agent 写入工程，Compositor 就会重新读取它，通常不到半秒。
 
-What you get are ordinary layers: select them, change their opacity or blend mode, paint on their masks, save.
+你能拿到的就是普通图层：选中、改不透明度或混合模式、在蒙版上涂画、存储。
 
-## The package
+## 包布局
 
 ```
 Example.comp/
 ├── manifest.json
 └── images/
-    ├── 6F1D3C2A-0B7E-4E8A-9C4D-2A1B3C4D5E6F.png        a layer's pixels
-    └── 6F1D3C2A-0B7E-4E8A-9C4D-2A1B3C4D5E6F.mask.png   its mask (optional)
+    ├── 6F1D3C2A-0B7E-4E8A-9C4D-2A1B3C4D5E6F.png        图层像素
+    └── 6F1D3C2A-0B7E-4E8A-9C4D-2A1B3C4D5E6F.mask.png   它的蒙版（可选）
 ```
 
-A minimal manifest with one full-canvas image layer:
+一张铺满画布的最小工程：
 
 ```json
 {
@@ -57,49 +57,48 @@ A minimal manifest with one full-canvas image layer:
 }
 ```
 
-- `layers` runs **bottom to top**: the last layer draws on top.
-- Keep `documentID` as it is when editing an existing project.
-- `transform` places the layer in document pixels: `origin` is its top-left corner, `size` its width and height, `rotation` is in degrees, clockwise. The image is stretched to `size`, so a layer can be smaller than the canvas (a cut-out placed with `origin`) or scaled.
-- `sampling` is `"High quality"`, `"Smooth"` or `"Nearest"`.
-- `opacity` runs from 0 to 1.
+- `layers` 按**从底到顶**排序：最后一个图层绘制在最上面。
+- 编辑现有工程时保留 `documentID`。
+- `transform` 用文档像素放置图层——`origin` 是左上角，`size` 是宽和高，`rotation` 用度表示，顺时针。图像会被拉伸到 `size`，因此图层可以比画布小（一块剪贴物配合 `origin` 放置）也可以缩放。
+- `sampling` 可取 `"High quality"`、`"Smooth"` 或 `"Nearest"`。
+- `opacity` 取值范围 0 到 1。
 
-## Rules that matter
+## 必须遵守的规则
 
-Break one of these and Compositor refuses the whole file **without any message**: the open canvas just stays as it was. If nothing updates, check these first.
+违反任何一条，Compositor 会**静默地拒绝整个文件**：画布原封不动。如果什么都没更新，先看这些。
+- **图片以图层命名。** 某图层 `"id": "6F1D…"` 必须用 `"imageFile": "6F1D….png"`，对应蒙版用 `"maskFile": "6F1D….mask.png"`，并且 ID 必须按清单所写的全大写形式。一个项目里 ID 唯一。
+- **图片是放在 `images/` 里的 8-bit PNG。** 图层是 RGBA，蒙版是 8-bit 灰度（白显黑隐）。
+- **混合模式的拼写必须精确**，按 Compositor 的命名：`Normal`、`Darken`、`Multiply`、`Color Burn`、`Linear Burn`、`Lighten`、`Screen`、`Color Dodge`、`Linear Dodge (Add)`、`Overlay`、`Soft Light`、`Hard Light`、`Vivid Light`、`Linear Light`、`Pin Light`、`Hard Mix`、`Difference`、`Exclusion`、`Subtract`、`Divide`、`Hue`、`Saturation`、`Color`、`Luminosity`。
+- **清单里命名的每个图层都有对应的图片**，且清单本身是合法 JSON。
 
-- **Image files are named after their layer.** A layer with `"id": "6F1D…"` must use `"imageFile": "6F1D….png"`, and a mask `"maskFile": "6F1D….mask.png"`, with the ID in uppercase as written in the manifest. One ID per layer, unique in the project.
-- **Images are 8-bit PNGs** in `images/`. Layer images are RGBA; masks are 8-bit grayscale (white shows the layer, black hides it).
-- **Blend modes are spelled exactly** as Compositor names them: `Normal`, `Darken`, `Multiply`, `Color Burn`, `Linear Burn`, `Lighten`, `Screen`, `Color Dodge`, `Linear Dodge (Add)`, `Overlay`, `Soft Light`, `Hard Light`, `Vivid Light`, `Linear Light`, `Pin Light`, `Hard Mix`, `Difference`, `Exclusion`, `Subtract`, `Divide`, `Hue`, `Saturation`, `Color`, `Luminosity`.
-- **Every layer the manifest names has its image in place**, and the manifest is valid JSON.
+## 工程打开时安全写入
 
-## Writing safely while the project is open
+Compositor 在文件变化时立刻读，所以你绝不能留半个状态：
 
-Compositor reads the project as soon as it changes, so never leave it half written:
+1. 先把所有新增或修改的 PNG 写到 `images/` 里。
+3. 接着把清单写到一个临时文件里（包内的任意位置，例如 `.manifest.json.tmp`），然后用原子重命名覆盖 `manifest.json`。rename 是原子的：Compositor 看到的要么是旧清单要么是新清单，永远不会看到其中一半。
 
-1. Write any new or changed PNGs into `images/` first.
-2. Then write the manifest to a temporary file inside the package (for example `.manifest.json.tmp`) and rename it over `manifest.json`. A rename is atomic: Compositor sees either the old manifest or the new one, never part of one.
+要改一个现有图层，保留它的 `id`，覆盖它的 PNG，然后重写清单。图层会在图层堆的同一位置就地更新。
 
-To change an existing layer, keep its `id` and overwrite its PNG, then rewrite the manifest. The layer updates in place, in the same spot in the stack.
+清单不再引用的图片，过段时间就可以删掉。
 
-Remove images you no longer reference once the manifest no longer lists them.
+Compositor 保存的工程里还有一个 `QuickLook` 目录（`Preview.jpg`），Finder 用空格键预览时会显示这张图。你修改工程后，把那个目录删掉，让 Finder 不要显示过时的预览；Compositor 下次保存时会重新写入。
 
-A project Compositor saved also has a `QuickLook` folder (`Preview.jpg`), which Finder shows as its Space-bar preview. When you change a project, delete that folder, so Finder doesn't preview an out-of-date picture; Compositor writes it again the next time it saves.
+## 打开的 App 行为
 
-## What the open app does
+- 写入停止后约三分之一秒会重新载入。连续多次写入会合并为一次更新，如果观察者想看清每一步，写入之间要稍微停顿。
+- 重载保留缩放、滚动与选区，但清空撤销历史（像重新打开文件一样）。
+- 如果使用者自己还有未保存的修改，Compositor 会询问：放弃他们的改动保留你的，还是保留他们自己的。它不会悄悄覆盖。
+- 一次失败写入会被忽略到下次写入为止，所以你写错了再改，也能正确显示。
+- 修改是被识别的依据是清单内容和每张图的名称与尺寸，而不是文件写入时间。改写 PNG 通常会改变其字节大小。如果替换后字节大小完全相同，同时也要改清单（比如重命名图层）；只把清单原样写回去是不够的。
 
-- It reloads about a third of a second after writes stop. Several writes in quick succession arrive as one update, so pause briefly between steps if a viewer should see each one.
-- A reload keeps the zoom, scroll and selection, but clears undo, as reopening a file does.
-- If the person has unsaved changes of their own, Compositor asks them to revert to your version or keep theirs, and never replaces their work silently.
-- A write that fails to load is ignored until the next change, so a mistake you then fix will still show up.
-- Changes are noticed from the manifest's contents and from each image's name and size, not from when files were written. Rewriting a PNG with different pixels changes its size in practice. If you replace an image with one of exactly the same byte size, also make a change to the manifest, such as renaming the layer; writing identical manifest bytes back isn't enough.
+## 蒙版
 
-## Masks
+用 `"maskFile": "<id>.mask.png"` 和 `"maskEnabled": true` 给任意图层加蒙版。蒙版覆盖图层自己的像素，所以与图层图片同尺寸。灰色代表半透明边缘。
 
-Add a mask to any layer with `"maskFile": "<id>.mask.png"` and `"maskEnabled": true`. The mask covers the layer's own pixels, so it has the same pixel size as the layer's image. Soft grays give soft edges.
+## 调整图层
 
-## Adjustment layers
-
-An adjustment layer has an `adjustment` object and no `imageFile`, and it affects everything below it. Every kind carries identity `levels` and `curves` blocks, plus its own settings. A warming Curves layer:
+调整图层有 `adjustment` 对象且没有 `imageFile`，它会影响它下方的一切。每一类都携带恒等的 `levels`、`curves` 块以及自己的设置。一个偏暖的 Curves 调整图层：
 
 ```json
 {
@@ -127,12 +126,12 @@ An adjustment layer has an `adjustment` object and no `imageFile`, and it affect
 }
 ```
 
-- `ranges` and `channels` run RGB, then red, green, blue. Curve points run from x 0 to x 255, in increasing x.
-- `kind` is one of `Hue/Saturation`, `Levels`, `Curves`, `Exposure`, `Gradient Map`, `Grain`, `Invert`, `Black & White`, `Color Balance`, `Gaussian Blur`, `Motion Blur`, `Add Noise`.
-- For Hue/Saturation, set `hue`, `saturation` and `lightness` on the adjustment itself. Color Balance takes a `colorBalanceSettings` object (`shadowCyanRed`, `shadowMagentaGreen`, `shadowYellowBlue`, and the same for `mid` and `highlight`, each −100 to 100, plus `preserveLuminosity`).
-- For the other kinds, the easiest way to get the exact shape is to add one in Compositor, save, and copy it from that project's manifest.
+- `ranges` 和 `channels` 按 RGB 然后红绿蓝的顺序排列。曲线控制点 x 从 0 到 255，x 单调递增。
+- `kind` 是 `Hue/Saturation`、`Levels`、`Curves`、`Exposure`、`Gradient Map`、`Grain`、`Invert`、`Black & White`、`Color Balance`、`Gaussian Blur`、`Motion Blur`、`Add Noise` 之一。
+- 对 Hue/Saturation，直接在调整对象上设 `hue`、`saturation`、`lightness`。Color Balance 用 `colorBalanceSettings` 对象（`shadowCyanRed`、`shadowMagentaGreen`、`shadowYellowBlue`，以及 `mid` 和 `highlight` 同名三组，每项 −100 到 100，再加上 `preserveLuminosity`）。
+- 其它类型最容易拿到精确形状的办法：在 Compositor 里加一个，存储，再从那个工程的清单里复制出来。
 
-## More
+## 更多
 
-- Folders, text layers, layer effects and everything else the format holds: [project-format.md](project-format.md).
-- Limits: canvases up to 30,000 pixels on a side; layers and masks count toward a memory budget that scales with the Mac.
+- 文件夹、文字图层、图层样式以及格式支持的其它全部内容：[project-format.md](project-format.md)。
+- 限制：画布每边最多 30000 像素；图层与蒙版都会计入一个按 Mac 性能扩展的内存预算。
