@@ -1,7 +1,7 @@
 import AppKit
 
-/// Draws an image into an RGBA buffer (premultiplied, alpha last), lets a C kernel change it in place,
-/// and returns the result.
+/// 把图像画进一块 RGBA 缓冲区（预乘 alpha，alpha 在最后），交给一个 C kernel 就地修改，
+/// 再返回结果。
 nonisolated enum ImageAdjustmentPixels {
     static func run(_ image: CGImage, _ body: (UnsafeMutablePointer<UInt8>, Int, Int, Int) -> Void) throws -> CGImage {
         let context = try BrushRaster.context(width: image.width, height: image.height, mask: false)
@@ -16,7 +16,7 @@ nonisolated enum ImageAdjustmentPixels {
     }
 }
 
-/// A straight sRGB color stored with an adjustment, 0–1 per channel.
+/// 随调整一起存储的 sRGB 颜色，每通道 0–1。
 nonisolated struct AdjustmentColor: Codable, Equatable, Sendable {
     var red: Double
     var green: Double
@@ -32,17 +32,17 @@ nonisolated struct AdjustmentColor: Codable, Equatable, Sendable {
     }
 }
 
-/// Photoshop's Exposure: `exposure` (stops) scales linear light and `offset` shifts it, then gamma
-/// correction bends the result. The same curve runs on every channel; alpha is kept.
+/// Photoshop 的曝光：`exposure`（档）缩放线性光，`offset` 平移它，随后由伽马校正弯折结果。
+/// 同一条曲线作用于所有通道；alpha 保持不变。
 nonisolated struct ExposureSettings: Codable, Equatable, Sendable {
     static let exposureRange: ClosedRange<Double> = -20...20
     static let offsetRange: ClosedRange<Double> = -0.5...0.5
     static let gammaRange: ClosedRange<Double> = 0.01...9.99
-    /// Stops of light, −20…20.
+    /// 曝光档数，−20…20。
     var exposure: Double = 0
-    /// Added in linear light, −0.5…0.5: negative deepens the shadows, positive lifts them.
+    /// 在线性光上叠加，−0.5…0.5：负值加深阴影，正值提亮阴影。
     var offset: Double = 0
-    /// Gamma correction, 0.01…9.99; above 1 brightens the midtones.
+    /// 伽马校正，0.01…9.99；大于 1 时提亮中间调。
     var gamma: Double = 1
     var isValid: Bool { Self.exposureRange.contains(exposure) && Self.offsetRange.contains(offset) && Self.gammaRange.contains(gamma) }
     var normalized: Self {
@@ -50,7 +50,7 @@ nonisolated struct ExposureSettings: Codable, Equatable, Sendable {
              offset: ImageAdjustmentPixels.clamp(offset, Self.offsetRange, 0),
              gamma: ImageAdjustmentPixels.clamp(gamma, Self.gammaRange, 1))
     }
-    /// Each channel's output (0–1) for each input byte, decoded to linear light and encoded back.
+    /// 每个输入字节对应的各通道输出（0–1），先解码为线性光再编码回去。
     var table: [Float] {
         let scale = pow(2, exposure)
         return (0...255).map { index in
@@ -70,8 +70,8 @@ nonisolated struct ExposureSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// Gradient Map: each pixel's brightness picks a color between `shadows` and `highlights` (the other
-/// way round when reversed); alpha is kept.
+/// 渐变映射：每个像素的明度在 `shadows` 与 `highlights` 之间取一个颜色（反转时两端互换）；
+/// alpha 保持不变。
 nonisolated struct GradientMapSettings: Codable, Equatable, Sendable {
     var shadows = AdjustmentColor(red: 0, green: 0, blue: 0)
     var highlights = AdjustmentColor(red: 1, green: 1, blue: 1)
@@ -83,12 +83,12 @@ nonisolated struct GradientMapSettings: Codable, Equatable, Sendable {
         result.highlights = highlights.clamped
         return result
     }
-    /// The colors for the darkest and lightest tones, in the order they apply.
+    /// 最暗与最亮色调对应的颜色，按实际应用的顺序排列。
     var ends: (dark: AdjustmentColor, light: AdjustmentColor) { reversed ? (highlights, shadows) : (shadows, highlights) }
     func apply(_ image: CGImage) throws -> CGImage {
         guard isValid else { throw ProjectError.invalid }
         let (dark, light) = ends
-        // Split into explicitly typed steps: as one expression the type checker times out (Xcode 26.1).
+        // 拆成显式标注类型的若干步：写成单个表达式时类型检查会超时（Xcode 26.1）。
         func channel(_ from: Double, _ to: Double, _ t: Double) -> UInt8 {
             let value: Double = from + (to - from) * t
             let scaled: Double = (value * 255).rounded()
@@ -108,19 +108,19 @@ nonisolated struct GradientMapSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// Black & White, as Photoshop's is: not a desaturation, but a choice of how bright each family of
-/// colors becomes in gray. Reds at 40% and yellows at 60% is why a default conversion keeps skin and
-/// foliage apart where a plain luminance flattens them.
+/// 黑白，与 Photoshop 的做法一致：不是简单去饱和，而是决定每个色系转成灰度后有多亮。
+/// 红色 40%、黄色 60% 这组默认值，正是默认转换能把肤色和树叶分开的原因——
+/// 而单纯用明度会把它们压成一片。
 nonisolated struct BlackWhiteSettings: Codable, Equatable, Sendable {
     static let range: ClosedRange<Double> = -200...300
-    /// Photoshop's defaults.
+    /// Photoshop 的默认值。
     var reds: Double = 40
     var yellows: Double = 60
     var greens: Double = 40
     var cyans: Double = 60
     var blues: Double = 20
     var magentas: Double = 80
-    /// Color the result while keeping its tones, for a sepia or a cyanotype.
+    /// 为结果着色并保留明暗关系，可做旧照或蓝晒效果。
     var tint = false
     var tintHue: Double = 40
     var tintSaturation: Double = 20
@@ -131,7 +131,7 @@ nonisolated struct BlackWhiteSettings: Codable, Equatable, Sendable {
     }
     func apply(_ image: CGImage) throws -> CGImage {
         guard isValid else { throw ProjectError.invalid }
-        // The C routine's order: red, yellow, green, cyan, blue, magenta.
+        // C routine 中的顺序：红、黄、绿、青、蓝、洋红。
         let weights = [reds, yellows, greens, cyans, blues, magentas].map { Float($0 / 100) }
         return try ImageAdjustmentPixels.run(image) { pixels, width, height, stride in
             adjust_black_white(pixels, width, height, stride, weights,
@@ -140,9 +140,8 @@ nonisolated struct BlackWhiteSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// Color Balance: shifts color towards one end of each opposing pair, separately for shadows,
-/// midtones and highlights. Preserve Luminosity puts each pixel's brightness back afterwards, so a
-/// warm cast doesn't also lighten the picture.
+/// 色彩平衡：把颜色朝每组对立色的一端推移，并分别为阴影、中间调和高光处理。
+/// 「保留明度」会在之后把每个像素的明度还原，因此偏暖的色调不会顺带把画面提亮。
 nonisolated struct ColorBalanceSettings: Codable, Equatable, Sendable {
     static let range: ClosedRange<Double> = -100...100
     var shadowCyanRed: Double = 0
@@ -175,17 +174,17 @@ nonisolated struct ColorBalanceSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// Film grain: brightness noise, strongest in the midtones. Its pattern is fixed in document space by
-/// `seed`, so it stays put as the canvas pans or redraws part of the image.
+/// 胶片颗粒：作用于明度的噪点，在中间调最强。其图案由 `seed` 固定在文档空间中，
+/// 因此画布平移或局部重绘时颗粒不会跟着动。
 nonisolated struct GrainSettings: Codable, Equatable, Sendable {
     static let amountRange: ClosedRange<Double> = 0...100
     static let sizeRange: ClosedRange<Double> = 0.5...20
     static let roughnessRange: ClosedRange<Double> = 0...100
-    /// Strength, 0–100.
+    /// 强度，0–100。
     var amount: Double = 25
-    /// Grain scale in document pixels, 0.5–20.
+    /// 颗粒尺度（文档像素），0.5–20。
     var size: Double = 1.5
-    /// 0–100: how much smaller, irregular detail roughens the main grain particles.
+    /// 0–100：加入多少更小的不规则细节，让主要颗粒显得更粗糙。
     var roughness: Double = 50
     var seed: UInt32 = 0
     var isValid: Bool { Self.amountRange.contains(amount) && Self.sizeRange.contains(size) && Self.roughnessRange.contains(roughness) }
@@ -196,8 +195,8 @@ nonisolated struct GrainSettings: Codable, Equatable, Sendable {
         result.roughness = ImageAdjustmentPixels.clamp(roughness, Self.roughnessRange, 50)
         return result
     }
-    /// `origin` and `unitsPerPixel` place the image's pixels in document space (a whole layer at 1:1 is
-    /// origin zero, one unit per pixel); `seed` replaces the stored pattern when given.
+    /// `origin` 与 `unitsPerPixel` 决定图像像素在文档空间中的位置（1:1 的整张图层即原点为零、
+    /// 每像素一个单位）；给定 `seed` 时会替换掉已存的图案。
     func apply(_ image: CGImage, origin: CGPoint = .zero, unitsPerPixel: CGFloat = 1, seed: UInt32? = nil) throws -> CGImage {
         guard isValid, unitsPerPixel.isFinite, unitsPerPixel > 0 else { throw ProjectError.invalid }
         guard amount > 0 else { return image }
