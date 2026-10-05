@@ -1,22 +1,21 @@
 import AppKit
 import CoreImage
 
-/// Free distortion (Cmd-drag a transform handle): the layer's four corners move independently.
-/// Layer transforms are affine, so a distortion is previewed live and, on Apply, the pixels (and
-/// mask) are resampled into the new shape — as Photoshop does for pixel layers — leaving an
-/// ordinary axis-aligned layer over the shape's bounds.
+/// 自由变形（按住 Cmd 拖动变换手柄）：四个角点各自独立移动。
+/// 图层变换为仿射变换，因此变形可实时预览，并在 Apply 时把像素（以及蒙版）
+/// 重采样到新形状——正如 Photoshop 对像素图层的处理——最终留下一个普通轴对齐的图层，覆盖形状的外接矩形。
 nonisolated enum DistortWarp {
-    /// The transform's corners in handle order: top-left, top-right, bottom-right, bottom-left.
+    /// 变换的角点，按手柄顺序：左上、右上、右下、左下。
     static func corners(of transform: LayerTransform) -> [CGPoint] {
         [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 0, y: 1)].map(transform.point)
     }
 
-    /// Four finite corners with some area to them. A convex shape is warped in perspective; anything else — a corner
-    /// pulled past its neighbours, which folds the shape over — is warped as two triangles instead (see `warp`).
+    /// 四个有限且具备面积的角点。凸形按透视变换；其余情形——某角点被拖过相邻角点从而使形状折回——
+    /// 则按两个三角形分别变换（参见 `warp`）。
     static func isUsable(_ corners: [CGPoint]) -> Bool {
         guard corners.count == 4,
               corners.allSatisfy({ $0.x.isFinite && $0.y.isFinite && abs($0.x) <= 1_000_000 && abs($0.y) <= 1_000_000 }) else { return false }
-        // Both halves need area, or one of them has nothing to draw.
+        // 两侧都需有面积，否则其中一侧将无内容可绘制。
         return abs(area(corners[0], corners[1], corners[2])) > 0.01 && abs(area(corners[0], corners[2], corners[3])) > 0.01
     }
 
@@ -24,7 +23,7 @@ nonisolated enum DistortWarp {
         (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
     }
 
-    /// A shape a perspective warp can take: convex, wound consistently either way (so a mirrored one counts).
+    /// 透视变换可处理的形状：凸形，且缠绕方向一致（镜像形状也计入）。
     static func isConvex(_ corners: [CGPoint]) -> Bool {
         guard isUsable(corners) else { return false }
         var sign: CGFloat = 0
@@ -37,7 +36,7 @@ nonisolated enum DistortWarp {
         return true
     }
 
-    /// The affine map taking three source points to three destination points.
+    /// 将三个源点映射到三个目标点的仿射变换。
     private static func affine(from source: (CGPoint, CGPoint, CGPoint), to target: (CGPoint, CGPoint, CGPoint)) -> CGAffineTransform? {
         let u = CGPoint(x: source.1.x - source.0.x, y: source.1.y - source.0.y)
         let v = CGPoint(x: source.2.x - source.0.x, y: source.2.y - source.0.y)
@@ -52,7 +51,7 @@ nonisolated enum DistortWarp {
                                  ty: target.0.y - (b * source.0.x + d * source.0.y))
     }
 
-    /// The perspective mapping of the unit square (corners in `corners(of:)` order) onto `c`.
+    /// 将单位正方形（角点按 `corners(of:)` 顺序）透视映射到 `c`。
     static func homography(_ c: [CGPoint]) -> (CGPoint) -> CGPoint {
         let sx = c[0].x - c[1].x + c[2].x - c[3].x, sy = c[0].y - c[1].y + c[2].y - c[3].y
         var g: CGFloat = 0, h: CGFloat = 0
@@ -72,8 +71,7 @@ nonisolated enum DistortWarp {
         }
     }
 
-    /// Where each corner of the image's own pixels lands: a flipped layer shows its pixels
-    /// mirrored, so they go to the opposite corners of the shape.
+    /// 图像自身像素各角点所对应的位置：翻转图层的像素呈镜像显示，因此像素去到形状的对侧角点。
     static func imageCorners(_ corners: [CGPoint], flipX: Bool, flipY: Bool)
         -> (topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint) {
         func corner(_ x: Int, _ y: Int) -> CGPoint {
@@ -83,9 +81,8 @@ nonisolated enum DistortWarp {
         return (corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1))
     }
 
-    /// `image`, shown through `transform`, resampled so its corners land on `corners`. Returns the
-    /// warped pixels over the shape's whole-pixel bounds and the axis-aligned transform for them.
-    /// `limit` caps the longest side for previews.
+    /// `image` 经 `transform` 显示，并被重采样使其角点落在 `corners` 上。
+    /// 返回覆盖形状整像素外接矩形的变形像素及其轴对齐变换。`limit` 限制预览时最长边的像素数。
     static func warp(_ image: CGImage, transform: LayerTransform, corners: [CGPoint], isMask: Bool,
                      limit: CGFloat? = nil) throws -> (image: CGImage, transform: LayerTransform) {
         guard isUsable(corners) else { throw ProjectError.invalid }
@@ -95,19 +92,19 @@ nonisolated enum DistortWarp {
         guard bounds.width >= 1, bounds.height >= 1, bounds.width <= DocumentLimits.maxSideExtent, bounds.height <= DocumentLimits.maxSideExtent,
               bounds.width * bounds.height <= DocumentLimits.maxSurfaceExtent else { throw ProjectError.tooLarge }
         let placed = LayerTransform(origin: bounds.origin, size: bounds.size, sampling: transform.sampling)
-        // A uniform 1 × 1 mask already covers any shape.
+        // 均匀的 1 × 1 蒙版已能覆盖任意形状。
         if isMask, image.width == 1, image.height == 1 { return (image, placed) }
         let factor = limit.map { min(1, $0 / max(bounds.width, bounds.height)) } ?? 1
         let width = max(1, Int((bounds.width * factor).rounded(.up)))
         let height = max(1, Int((bounds.height * factor).rounded(.up)))
         let target = imageCorners(corners, flipX: transform.flipX, flipY: transform.flipY)
-        // A folded shape (a corner dragged past its neighbours) has no perspective that takes the image to it, so
-        // each half is taken there on its own, as two triangles meeting along the shape's diagonal.
+        // 折回形状（某角点被拖过相邻角点）没有能直接将图像映射到它的透视变换，
+        // 因此将两侧各自作为三角形分别变换，沿形状对角线相接。
         if !isConvex(corners) {
             return (try warpFolded(image, target: target, bounds: bounds, factor: factor,
                                    width: width, height: height, isMask: isMask), placed)
         }
-        // Core Image measures y upward from the bottom of the output.
+        // Core Image 从输出底部向上度量 y 坐标。
         func vector(_ point: CGPoint) -> CIVector {
             CIVector(x: (point.x - bounds.minX) * factor, y: (bounds.maxY - point.y) * factor)
         }
@@ -118,8 +115,8 @@ nonisolated enum DistortWarp {
         return (try PixelAdjust.render(warped, width: width, height: height, isMask: isMask), placed)
     }
 
-    /// The image drawn into a shape as two triangles: the halves either side of the diagonal, each taken there by
-    /// its own affine map. Handles folded and dented shapes, which a perspective warp cannot.
+    /// 将图像按两个三角形绘制到形状中：对角线两侧各自由其仿射变换带到位。
+    /// 可处理透视变换无法应对的折回与凹陷形状。
     private static func warpFolded(_ image: CGImage, target: (topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint),
                                    bounds: CGRect, factor: CGFloat, width: Int, height: Int, isMask: Bool) throws -> CGImage {
         let context = try BrushRaster.context(width: width, height: height, mask: isMask)
@@ -135,7 +132,7 @@ nonisolated enum DistortWarp {
             let destination = (placed(to.0), placed(to.1), placed(to.2))
             guard let map = affine(from: from, to: destination) else { continue }
             context.saveGState()
-            // Hard edges along the shared diagonal, so the two halves meet exactly instead of blending twice.
+            // 共享对角线两侧为硬边，确保两半恰好相接而不发生双重混合。
             context.setShouldAntialias(false)
             let triangle = CGMutablePath()
             triangle.addLines(between: [destination.0, destination.1, destination.2])
@@ -151,9 +148,8 @@ nonisolated enum DistortWarp {
         return result
     }
 
-    /// A full-resolution warp cropped to its visible pixels. A distorted shape rarely fills its
-    /// bounding box — and a brush stroke never does — so the layer (and its transform handles)
-    /// should hug what is actually there. `crop` is in the warp's pixels, for cropping a mask to match.
+    /// 全分辨率的变形结果裁剪至可见像素。变形形状很少填满其外接矩形——画笔笔触更不会——
+    /// 因此图层（及其变换手柄）应紧贴实际存在的区域。`crop` 以变形后的像素为单位，供裁剪蒙版与之匹配。
     static func warpTrimmed(_ image: CGImage, transform: LayerTransform, corners: [CGPoint])
         throws -> (image: CGImage, transform: LayerTransform, crop: CGRect) {
         let warped = try warp(image, transform: transform, corners: corners, isMask: false)
@@ -164,7 +160,7 @@ nonisolated enum DistortWarp {
         var edges = [Int](repeating: 0, count: 4)
         brush_alpha_bounds(data.assumingMemoryBound(to: UInt8.self), warped.image.width, warped.image.height, context.bytesPerRow, &edges)
         let crop = CGRect(x: edges[0], y: edges[1], width: edges[2] - edges[0], height: edges[3] - edges[1])
-        // Nothing visible, or nothing to trim: keep the warp as it is.
+        // 无可见内容或无可裁剪区域：保持变形结果不变。
         guard crop.width >= 1, crop.height >= 1, crop != full, let cropped = warped.image.cropping(to: crop) else {
             return (warped.image, warped.transform, full)
         }
@@ -174,8 +170,8 @@ nonisolated enum DistortWarp {
         return (cropped, placed, crop)
     }
 
-    /// Where `placement`'s corners (handle order) land when the perspective taking `transform`'s corners to `corners`
-    /// is applied around it too — how a linked mask placed apart from its layer distorts with the layer.
+    /// 当应用于 `transform` 角点到 `corners` 的透视变换同样作用于 `placement` 时，
+    /// 其角点（按手柄顺序）的落点——即与图层分离放置的链接蒙版如何随图层一起变形。
     static func carried(_ placement: LayerTransform, by transform: LayerTransform, to corners: [CGPoint]) -> [CGPoint] {
         let toUnit = CGAffineTransform(translationX: -0.5, y: -0.5)
             .concatenating(CGAffineTransform(scaleX: transform.size.width, y: transform.size.height))
@@ -185,8 +181,8 @@ nonisolated enum DistortWarp {
         return self.corners(of: placement).map { map($0.applying(toUnit)) }
     }
 
-    /// A mask warped like `warp`, but `background` (its tone past its pixels) outside the shape instead of black —
-    /// for masks placed apart from their layers, which show beyond their own bounds.
+    /// 与 `warp` 同样变形的蒙版，但形状之外为 `background`（其像素外的色调）而非黑色——
+    /// 供与图层分离放置、显示范围超出自身边界的蒙版使用。
     static func warpMask(_ image: CGImage, transform: LayerTransform, corners: [CGPoint], background: CGFloat,
                          limit: CGFloat? = nil) throws -> (image: CGImage, transform: LayerTransform) {
         let warped = try warp(image, transform: transform, corners: corners, isMask: true, limit: limit)
@@ -207,8 +203,7 @@ nonisolated enum DistortWarp {
         return (result, warped.transform)
     }
 
-    /// Carries an outline drawn over the original pixels (placed by `pixelToDocument`) into the
-    /// distorted shape, so a transformed selection keeps matching its pixels.
+    /// 将绘制在原始像素之上（按 `pixelToDocument` 放置）的轮廓带入变形后的形状，使变换中的选区始终匹配其像素。
     static func mapPath(_ path: CGPath, pixelToDocument: CGAffineTransform, pixelSize: CGSize,
                         transform: LayerTransform, corners: [CGPoint]) -> CGPath? {
         guard isConvex(corners), pixelSize.width > 0, pixelSize.height > 0 else { return nil }
@@ -238,8 +233,8 @@ nonisolated enum DistortWarp {
     }
 }
 
-/// The canvas's last warped preview, reused while the distortion and layer are unchanged.
-/// The last effects image warped for a distortion, so the corners can keep moving without redoing it.
+/// 画布最近一次的变形预览，变形与图层未变化时复用。
+/// 最近一次为变形而变形的 effects 图像，角点可继续移动而无需重做。
 struct DistortEffectsCache {
     let corners: [CGPoint]
     let image: CGImage
@@ -255,23 +250,22 @@ struct DistortPreviewCache {
 }
 
 extension EditorSession {
-    /// Cmd-drag on a transform handle: the corners start moving freely. Each distortion resamples
-    /// the pixels, so the edit then waits for Apply rather than applying on mouse-up.
+    /// 在变换手柄上 Cmd + 拖动：角点开始自由移动。每次变形都会重采样像素，
+    /// 因此编辑需等待 Apply 而非在鼠标抬起时立即应用。
     func beginDistort() {
         guard let edit = transformEdit, edit.corners == nil, edit.draft.isValid else { return }
         transformEdit = TransformEdit(layerID: edit.layerID, draft: edit.draft, persistent: true, floating: edit.floating,
                                       corners: DistortWarp.corners(of: edit.draft), mask: edit.mask, group: edit.group)
     }
 
-    /// Moves the distortion's corners; a twisted or collapsed shape is ignored.
+    /// 移动变形角点；扭曲或塌陷的形状会被忽略。
     func previewCorners(_ corners: [CGPoint]) {
         guard transformEdit?.corners != nil, DistortWarp.isUsable(corners) else { return }
         transformEdit?.corners = corners
     }
 
-    /// Where a distortion takes `layer`: its transform under the edit and the corners that transform moves to —
-    /// for a group, each layer by the same perspective as the box.
-    /// The box and corners a distortion in progress is taking `layer` to, when it's taking it anywhere.
+    /// 变形将 `layer` 带到何处：编辑下的变换以及该变换移到的角点——对组而言，每个图层按与框相同的透视变换。
+    /// 进行中的变形将 `layer` 带往的框与角点（若确有移动）。
     func distortShape(for layer: ImageLayer) -> (transform: LayerTransform, corners: [CGPoint])? {
         guard let edit = transformEdit, !edit.mask, let shape = edit.corners else { return nil }
         return distortTarget(for: layer, edit: edit, shape: shape)
@@ -285,20 +279,19 @@ extension EditorSession {
         return DistortWarp.isUsable(corners) ? (transform, corners) : nil
     }
 
-    /// The layer warped into the pending distortion, at preview size, for the canvas to draw.
-    /// A layer's effects, warped into the shape a distortion in progress is making — so its stroke and shadow stay
-    /// on while the corners are dragged, rather than disappearing until the distortion is applied. `image` is the
-    /// layer with its effects around it (see `LayerEffectsRenderer`), which already includes its mask.
+    /// 变形到挂起变形中的图层（预览尺寸），供画布绘制。
+    /// 图层的 effects 被变形到正在形成的形状中——这样在角点拖动期间描边和阴影保持显示，
+    /// 而非等到 Apply 才出现。`image` 为已包含 effects 的图层（参见 `LayerEffectsRenderer`），其中已包含其蒙版。
     func distortedEffects(for layer: ImageLayer, effects image: CGImage, inset: CGFloat) -> (image: CGImage, transform: LayerTransform)? {
         guard let edit = transformEdit, !edit.mask, let shape = edit.corners,
               let target = distortTarget(for: layer, edit: edit, shape: shape) else { return nil }
         return distortedEffects(for: layer, effects: image, inset: inset, target: target)
     }
 
-    /// The same, for a distortion whose target is already known — the commit, which runs once the edit is over.
+    /// 同上，但目标已知的变形——commit，编辑结束后执行一次。
     func distortedEffects(for layer: ImageLayer, effects image: CGImage, inset: CGFloat,
                           target: (transform: LayerTransform, corners: [CGPoint])) -> (image: CGImage, transform: LayerTransform)? {
-        // The effects image is the layer's box grown by its margin; its corners take the same perspective.
+        // effects 图像为按其外扩边距放大后的图层框；其角点承受相同的透视变换。
         let grown = LayerEffectsRenderer.placed(target.transform, image: image, inset: inset)
         let carried = DistortWarp.carried(grown, by: target.transform, to: target.corners)
         if let cache = distortEffectsCache[layer.id], cache.corners == carried, cache.image === image { return cache.result }
@@ -326,7 +319,7 @@ extension EditorSession {
                       case let carried = DistortWarp.carried(placement, by: transform, to: corners), DistortWarp.isConvex(carried),
                       let moved = try? DistortWarp.warpMask(owned.asset.image, transform: placement, corners: carried,
                                                             background: LayerMask.background(of: owned.asset.thumbnail), limit: 2048) {
-                // A linked mask placed apart takes the same perspective over its own bounds.
+                // 分离放置的链接蒙版在其自身外接矩形内承受相同的透视变换。
                 warpedMask = LayerMask(asset: ImportedImage(image: moved.image, thumbnail: owned.asset.thumbnail, name: owned.asset.name),
                                        isEnabled: owned.isEnabled)
                     .clipImage(placement: moved.transform, over: warped.transform, width: warped.image.width, height: warped.image.height, limit: 2048)
@@ -341,7 +334,7 @@ extension EditorSession {
         return result
     }
 
-    /// Apply for a distortion: each distorted layer's pixels and mask are resampled into its shape, as one undo step.
+    /// Apply 变形：每个被变形图层的像素与蒙版被重采样到其形状中，构成一个撤销步骤。
     func commitDistort(_ edit: TransformEdit, corners shape: [CGPoint]) {
         distortPreviewCache = [:]
         defer { distortEffectsCache = [:] }
@@ -350,20 +343,20 @@ extension EditorSession {
         for id in ids {
             guard let index = document?.layers.firstIndex(where: { $0.id == id }), let layer = document?.layers[index],
                   let target = distortTarget(for: layer, edit: edit, shape: shape) else { continue }
-            // The effects warped for this distortion are already in hand: keep showing them until the worker has
-            // rendered the effects for the layer's new pixels, or they blink off for a frame on Apply.
+            // 本次变形所用的 effects 图像已就绪：保留显示直到后台为图层新像素渲染完成，
+            // 否则 Apply 时它们会消失一帧。
             let warpedEffects = effectsPreviews.rendered(id)
                 .flatMap { distortedEffects(for: layer, effects: $0.image, inset: $0.inset, target: target) }
             do { try distort(at: index, transform: target.transform, corners: target.corners) }
             catch { brushError = error.localizedDescription }
-            // Placed where it was warped to: applying a distortion also crops the layer, so the margins around it
-            // are no longer even and an inset could not put it back in the right place.
+            // 放置在变形落点处：Apply 变形同时裁剪图层，周围的边距不再均匀，
+            // 因此 inset 无法将其放回正确位置。
             if let warpedEffects { effectsPreviews.seed(id, image: warpedEffects.image, placement: warpedEffects.transform) }
         }
         endEdit()
     }
 
-    /// The layer at `index`, shown by `transform`, resampled so its corners land on `corners`.
+    /// `index` 处的图层，经 `transform` 显示，重采样使其角点落在 `corners` 上。
     private func distort(at index: Int, transform: LayerTransform, corners: [CGPoint]) throws {
         guard let layer = document?.layers[index], let image = layer.asset?.image else { return }
         let warped = try DistortWarp.warpTrimmed(image, transform: transform, corners: corners)
@@ -371,7 +364,7 @@ extension EditorSession {
         var mask = layer.mask
         if let original = layer.mask, original.placement == nil, original.isLinked {
             let warpedMask = try DistortWarp.warp(original.asset.image, transform: transform, corners: corners, isMask: true)
-            // A uniform mask passes through; any other is cropped with the pixels.
+            // 均匀蒙版保持原样；其他蒙版随像素一同裁剪。
             let maskAsset: ImportedImage
             if warpedMask.image === original.asset.image {
                 maskAsset = original.asset
@@ -389,7 +382,7 @@ extension EditorSession {
             mask = LayerMask(asset: moved.image === original.asset.image ? original.asset : try LayerMask.asset(from: moved.image),
                              isEnabled: original.isEnabled, placement: moved.transform, isLinked: true)
         } else if let original = layer.mask {
-            // An unlinked mask keeps its place on the document.
+            // 未链接的蒙版保持其在文档上的位置。
             mask?.placement = original.placement ?? layer.transform
         }
         document?.layers[index].asset = asset

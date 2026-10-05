@@ -1,21 +1,20 @@
 import CoreGraphics
 import Foundation
 
-/// Draws a layer held as an unchanged image plus replacement tiles — a painted layer's raster snapshot, or a
-/// brush stroke in progress — so it looks the same as those pixels drawn as one image by `LayerRenderer`.
+/// 把图层绘制为「未变更图像 + 替换瓦片」的形式——即绘制图层的栅格快照，或进行中的画笔笔触——
+/// 使其与 `LayerRenderer` 将像素作为一张完整图像绘制时的结果一致。
 ///
-/// Drawing each tile on its own resamples it without its neighbours (seams) and can't use the sharp halvings,
-/// and the live stroke used to switch the whole layer to Nearest, so pixels shifted when painting started and
-/// again when it ended. Instead the tiled areas are rebuilt as pieces: squares of the layer grid, aligned to
-/// every halving, recomposed at full resolution with a margin of surrounding pixels, reduced with the same
-/// halvings as the image, and drawn only inside the square. The margin covers everything the halvings and Core
-/// Graphics's last resample can reach, so a piece's pixels match the whole image's; the unchanged image fills
-/// the rest. Clips are hard-edged so the parts meet without gaps or overlap.
+/// 单独绘制每个瓦片时会在没有相邻像素的情况下重采样（产生接缝），且无法使用 sharp halvings；
+/// 此前实时笔触会把整个图层切换到 Nearest，导致绘画开始与结束时像素发生位移。
+/// 取而代之，将瓦片区域重建为 pieces：按图层网格的方形、与每次 halving 对齐、
+/// 周围带一圈像素边缘、以全分辨率重绘，并以与图像相同的 halving 缩小，仅在方块内绘制。
+/// 边缘覆盖 halving 与 Core Graphics 最终重采样所能触及的所有范围，使 piece 的像素与整张图像一致；
+/// 其余部分由未变更图像填充。剪裁为硬边，使各部分恰好相接而无缝隙或重叠。
 nonisolated enum TiledLayerRenderer {
     nonisolated struct Piece: @unchecked Sendable {
-        /// Grid pixels this piece draws.
+        /// 本 piece 所绘制的网格像素区域。
         let interior: CGRect
-        /// Grid pixels its image holds: the interior and a margin.
+        /// 其图像所保存的网格像素：内部区域加上边缘。
         let region: CGRect
         let image: CGImage
         func offsetBy(_ offset: CGPoint) -> Piece {
@@ -23,14 +22,14 @@ nonisolated enum TiledLayerRenderer {
         }
     }
 
-    /// Grid pixels beyond a change that its reduced, resampled pixels can reach, with room to spare.
+    /// 变化区域之外、其缩小重采样后的像素仍可能触及的网格像素数，并留有余量。
     static func support(level: Int) -> CGFloat { level == 0 ? 8 : CGFloat(16 << level) }
-    /// Piece squares: committed snapshots use large ones (fewer to build, once), live strokes small ones (little
-    /// to rebuild per mouse move). Both are whole multiples of every halving used.
+    /// piece 方块的边长：已提交的快照用大块（构建次数少，且只需构建一次），实时笔触用小块
+    /// （每次鼠标移动需要重建的量很小）。两者都是各次 halving 的整数倍。
     static let committedCell: CGFloat = 1024
     static let strokeCell: CGFloat = 256
 
-    /// How one layer's grid maps into the (already transformed) context.
+    /// 单个图层的网格如何映射到（已变换的）绘制上下文中。
     struct Frame {
         let bounds: CGRect
         let pixelWidth: CGFloat
@@ -38,7 +37,7 @@ nonisolated enum TiledLayerRenderer {
         let level: Int
         let device: CGFloat
         let sampling: LayerSampling
-        /// Grid pixels the context's clip can show.
+        /// 上下文的剪裁区域能显示的网格像素范围。
         let visible: CGRect
         func mapped(_ rect: CGRect) -> CGRect {
             CGRect(x: bounds.minX + rect.minX / pixelWidth * bounds.width,
@@ -50,7 +49,7 @@ nonisolated enum TiledLayerRenderer {
 
     // MARK: Drawing
 
-    /// A committed raster snapshot (a painted layer).
+    /// 已提交的栅格快照（已绘制的图层）。
     static func drawRaster(_ raster: RasterSnapshot, transform: LayerTransform, center: CGPoint, scale: CGFloat,
                            opacity: Double, blendMode: LayerBlendMode, mask: CGImage?, in context: CGContext) {
         withFrame(pixelWidth: raster.width, pixelHeight: raster.height, transform: transform, center: center, scale: scale,
@@ -60,8 +59,8 @@ nonisolated enum TiledLayerRenderer {
         }
     }
 
-    /// A tiled edit in progress (`patches`, in a `width` × `height` grid) over the layer's previous pixels —
-    /// `image` or `raster`, sitting at `sourceRect` — drawn as the finished layer will look.
+    /// 进行中的分块编辑（`patches`，位于 `width` × `height` 的网格中），叠加在图层原有的像素
+    /// `image` 或 `raster`（位于 `sourceRect`）之上，按图层完成后的样子绘制。
     static func drawStroke(width: Int, height: Int, sourceRect: CGRect, patches: [BrushPatch], image: CGImage?, raster: RasterSnapshot?,
                            transform: LayerTransform, center: CGPoint, scale: CGFloat, opacity: Double, blendMode: LayerBlendMode,
                            mask: CGImage?, in context: CGContext) {
@@ -93,7 +92,7 @@ nonisolated enum TiledLayerRenderer {
                 }
             }, replace: { draw(pieces[$0], holes: [], frame: frame, in: context) })
             context.restoreGState()
-            // Paint beyond the layer's old bounds is revealed, not masked.
+            // 画出图层旧边界之外的部分是「显露」而非「遮罩」。
             if mask != nil {
                 for piece in pieces where !sourceRect.contains(piece.interior) {
                     draw(piece, holes: [sourceRect], frame: frame, in: context)
@@ -102,22 +101,22 @@ nonisolated enum TiledLayerRenderer {
         }
     }
 
-    /// Painting a layer's mask (`patches` of coverage in a `width` × `height` grid, over `oldMask` at `sourceRect`):
-    /// the layer's pixels — `image` or `raster`, also at `sourceRect` — drawn through the mask as it will be once
-    /// committed: pieces of the new mask where the stroke's tiles can show, the old mask elsewhere.
+    /// 绘制图层蒙版（覆盖度 `patches` 位于 `width` × `height` 网格中，叠加在 `sourceRect` 处的
+    /// `oldMask` 上）：把图层像素 `image` 或 `raster`（同样在 `sourceRect` 处）透过提交后的新蒙版绘制 ——
+    /// 笔触瓦片能显示之处用新蒙版的 piece，其余位置沿用旧蒙版。
     static func drawMaskStroke(width: Int, height: Int, sourceRect: CGRect, patches: [BrushPatch], oldMask: ImportedImage?,
                                image: CGImage?, raster: RasterSnapshot?, transform: LayerTransform, center: CGPoint, scale: CGFloat,
                                opacity: Double, blendMode: LayerBlendMode, in context: CGContext) {
         withFrame(pixelWidth: width, pixelHeight: height, transform: transform, center: center, scale: scale,
                   opacity: opacity, blendMode: blendMode, in: context) { frame in
-            // Pieces are halved on the mask image's own grid and levels, the way the old mask is.
+            // piece 按蒙版图像自身的网格与层级做 halving，与旧蒙版的处理方式一致。
             let level = frame.sampling == .nearest ? 0
                 : DownsampleCache.level(for: frame.mapped(sourceRect).width * frame.device / max(1, sourceRect.width))
             let found = interiors(near: patches.map(\.rect), margin: support(level: level), size: strokeCell,
                                   step: CGFloat(1 << level), origin: sourceRect.origin, visible: frame.visible)
             let pieces = found.compactMap { interior in
                 piece(interior: interior, level: level, origin: sourceRect.origin, bounds: sourceRect, mask: true) { context, region in
-                    // Beyond the old mask an edit reveals, as mask edits do.
+                    // 超出旧蒙版的部分按蒙版编辑的惯例予以显露。
                     context.setFillColor(gray: 1, alpha: 1)
                     context.fill(region)
                     if let old = oldMask?.raster {
@@ -149,11 +148,10 @@ nonisolated enum TiledLayerRenderer {
         }
     }
 
-    /// Draws `unchanged` everywhere but `interiors`, and `replace(i)` inside interior `i`. Core Graphics's hard clips
-    /// cover every pixel they touch, so two neighbouring clips both draw the pixels their shared edge splits —
-    /// hidden by opaque pixels, but a line wherever the layer or its mask is translucent. Clips on device-pixel
-    /// edges do split exactly, so the pieces' device-aligned bounds are assembled apart, in a transparency layer
-    /// where each interior is cleared before its replacement draws, and composited once.
+    /// 除了 `interiors` 之外都绘制 `unchanged`，在第 i 个 interior 内部绘制 `replace(i)`。Core Graphics 的硬边剪裁
+    /// 会覆盖它们触及的每一个像素，因此两个相邻剪裁会各自绘制被其公共边切开的那些像素——在不透明像素上看不出来，
+    /// 但在图层或其蒙版半透明处会露出一条线。落在设备像素边上的剪裁才会精确切开，因此各 piece 对齐设备的边界
+    /// 是分开组装的：在一个透明图层里，先清空每个 interior 再绘制其替代内容，最后一次性合成。
     private static func drawReplacing(_ interiors: [CGRect], frame: Frame, in context: CGContext,
                                       unchanged: () -> Void, replace: (Int) -> Void) {
         let toDevice = context.userSpaceToDeviceSpaceTransform
@@ -177,7 +175,7 @@ nonisolated enum TiledLayerRenderer {
         context.setShouldAntialias(false)
         context.addPath(CGPath(rect: device.insetBy(dx: 0.001, dy: 0.001), transform: [toUser]))
         context.clip()
-        // Composited with the layer's opacity and blend mode; drawn inside at full strength, normally.
+        // 内部按全强度绘制，之后再与图层的不透明度和混合模式合成。
         context.beginTransparencyLayer(auxiliaryInfo: nil)
         context.saveGState()
         context.setBlendMode(.normal)
@@ -219,7 +217,7 @@ nonisolated enum TiledLayerRenderer {
         context.restoreGState()
     }
 
-    /// A committed raster placed at `offset` in the frame's grid, leaving `holes` for pieces drawn over it.
+    /// 已提交的栅格数据，置于 frame 网格的 `offset` 处；`holes` 是留给覆盖其上 piece 的空位。
     private static func drawCommitted(_ raster: RasterSnapshot, at offset: CGPoint, holes: [CGRect], frame: Frame, in context: CGContext) {
         let pieces = TiledPieceCache.shared.pieces(for: raster, level: frame.level).map { $0.offsetBy(offset) }
         if let base = raster.base {
@@ -232,7 +230,7 @@ nonisolated enum TiledLayerRenderer {
         }
     }
 
-    /// The unchanged image (placed at `rect`) reduced by the frame's halvings, everywhere but `holes`.
+    /// 未变更的图像（置于 `rect` 处），按 frame 的 halving 缩小后绘制；`holes` 区域除外。
     private static func drawBase(_ image: CGImage, at rect: CGRect, holes: [CGRect], frame: Frame, in context: CGContext) {
         let reduced = DownsampleCache.shared.image(image, level: frame.level)
         let step = CGFloat(1 << reduced.level)
@@ -240,7 +238,7 @@ nonisolated enum TiledLayerRenderer {
                              width: CGFloat(reduced.image.width) * step * rect.width / CGFloat(max(1, image.width)),
                              height: CGFloat(reduced.image.height) * step * rect.height / CGFloat(max(1, image.height)))
         context.saveGState()
-        // The image's own edges antialias as usual; only the pieces' squares are cut out.
+        // 图像自身的边缘照常做抗锯齿；只有 piece 的方块被挖空。
         clip(to: covered.insetBy(dx: -step - 8, dy: -step - 8), excluding: holes, frame: frame, in: context)
         context.setShouldAntialias(frame.sampling != .nearest)
         context.draw(reduced.image, in: frame.mapped(covered))
@@ -285,13 +283,13 @@ nonisolated enum TiledLayerRenderer {
         context.clip(to: LayerRenderer.coverage(of: reduced, in: target), mask: reduced.image)
     }
 
-    // MARK: Pieces
+    // MARK: Pieces（piece）
 
-    /// A piece drawing `interior`: `compose` draws full-resolution grid pixels (into a context whose origin is
-    /// the grid's) over the interior grown by the support, which is then reduced to `level`.
-    /// `bounds` (grid pixels) is everything that holds pixels — the layer's grid, plus anything painted past it.
-    /// The margin is kept inside it: past that edge there is nothing to compose, and resampling a piece whose
-    /// margin is empty pulls that emptiness into the layer's edge, which the whole image's own draw never does.
+    /// 绘制 `interior` 的一个 piece：`compose` 在向外扩展了支撑范围的 interior 上绘制全分辨率的网格像素
+    /// （绘制上下文的原点即网格原点），随后再缩小到 `level`。
+    /// `bounds`（网格像素）是所有含像素的范围——图层的网格，以及绘制到其之外的任何内容。
+    /// 边缘留白被限制在其内：越过该边界就没有可合成的内容，而重采样一个边缘为空的 piece 会把这份空
+    /// 带到图层边缘上，整图直接绘制时则绝不会这样。
     static func piece(interior: CGRect, level: Int, origin: CGPoint, bounds: CGRect? = nil, mask: Bool = false,
                       compose: (CGContext, CGRect) -> Void) -> Piece? {
         let margin = support(level: level)
@@ -319,9 +317,9 @@ nonisolated enum TiledLayerRenderer {
         return Piece(interior: kept, region: region, image: image)
     }
 
-    /// Piece interiors: in each `size` square (from `origin`), the part within `margin` of any of `rects`, grown
-    /// to the `step` grid. Pieces stay disjoint and go only where changes can show — clear of the layer's own
-    /// edges unless something was painted near them. Limited to what `visible` shows.
+    /// 各 piece 的 interior：在每个以 `origin` 为起点、边长 `size` 的方块内，取距 `rects` 中任一矩形在
+    /// `margin` 范围内的部分，并对齐到 `step` 网格。piece 之间保持不相交，且只出现在变化可能显现之处
+    /// ——除非有东西画在图层边缘附近，否则会避开这些边缘。范围不超过 `visible` 所显示的部分。
     static func interiors(near rects: [CGRect], margin: CGFloat, size: CGFloat, step: CGFloat, origin: CGPoint, visible: CGRect?) -> [CGRect] {
         var parts: [SIMD2<Int>: CGRect] = [:]
         for rect in rects {
@@ -354,8 +352,8 @@ nonisolated enum TiledLayerRenderer {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    /// The part of `image` (placed at `rect`) inside `region`: cropped when it is 1:1 with the grid, otherwise
-    /// (a solid 1 × 1 mask, say) drawn stretched over `rect`.
+    /// `image`（置于 `rect` 处）落在 `region` 内的部分：与网格 1:1 时按原样裁切，否则（比如一整块
+    /// 1 × 1 的纯色蒙版）拉伸后绘制到 `rect` 上。
     private static func drawCropped(_ image: CGImage, at rect: CGRect, within region: CGRect, mask: Bool = false, in context: CGContext) {
         guard CGFloat(image.width) == rect.width, CGFloat(image.height) == rect.height else {
             BrushRaster.draw(image, in: rect, mask: mask, context: context)
