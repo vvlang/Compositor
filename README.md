@@ -19,6 +19,57 @@ Adobe Photoshop 太贵，而 GIMP 那类工具的体验又不够贴近 Photoshop
 brew install --cask robbietilton-compositor
 ```
 
+### 本仓库构建的 DMG：如何绕过 Gatekeeper
+
+> 如果你用的是**上游官方发布版**，跳过这一节——它有 Developer ID 签名并已公证，开箱即用。
+
+本仓库提供的 `dist/Compositor-<version>.dmg` 是用 `scripts/package-adhoc-dmg.sh` 构建的，
+**没有 Apple 开发者证书**（ad-hoc 签名，也未经公证）。因此 Gatekeeper 会拦截它，
+双击打开会提示：
+
+> 「无法验证开发者」／「Compositor 已损坏，无法打开」
+
+这是**预期行为，不是文件损坏**——签名是完整的，只是没有 Apple 背书。
+macOS 对未签名的下载内容一律拦截，无法通过双击绕过。三种解法，任选其一：
+
+**方法一：右键 → 打开（推荐，最省事）**
+
+在 Finder 里 **右键点击 `Compositor.app` → 打开** → 弹窗里再点一次「打开」。
+这条路径只对这一次生效，之后正常双击即可。
+
+**方法二：清除隔离属性（批量分发时用这个）**
+
+隔离属性是浏览器下载时打上的标记，清掉它 Gatekeeper 就不会再拦：
+
+```sh
+# 把 APP_PATH 换成实际路径
+xattr -dr com.apple.quarantine /Applications/Compositor.app
+```
+
+较新的 macOS 还会额外打上 `com.apple.provenance` 属性。可以一并删掉：
+
+```sh
+xattr -dr com.apple.provenance /Applications/Compositor.app
+```
+
+> 该属性在部分系统上受保护，若报 `Operation not permitted` 属正常现象——
+> 删掉 `com.apple.quarantine` 通常已经足够。
+
+**方法三：系统设置里放行（一次性，对所有未签名应用生效）**
+
+「系统设置 › 隐私与安全性」→ 往下滚到「安全性」→ 点「仍要打开」。
+
+> 如果这一项是灰的，说明你还没先尝试过打开它——Gatekeeper 会在你尝试打开之后才把按钮放出来。
+
+**自己重新构建的话**，用仓库里的脚本即可，它已经把 ad-hoc 重签一并做好了：
+
+```sh
+bash scripts/package-adhoc-dmg.sh
+```
+
+> 补充：`scripts/release.sh`（上游原版）需要 Developer ID 证书与公证凭据，
+> 没有证书时用不了，别在这条路上浪费时间。
+
 ## 功能
 
 ### 图层
