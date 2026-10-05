@@ -179,7 +179,10 @@ struct NativeLayerList: NSViewRepresentable {
             menu.addItem(NSMenuItem.separator())
 
             // 8. Add Mask >
-            let addMaskItem = NSMenuItem(title: "Add Mask", action: nil, keyEquivalent: "")
+            // The parent gets its own action so validation routes through the selector rather
+            // than matching on the title, which is display-only and goes through the catalog.
+            let addMaskItem = NSMenuItem(title: "Add Mask", action: #selector(addMaskMenuAction), keyEquivalent: "")
+            addMaskItem.target = self
             let addMaskSubmenu = NSMenu(title: "Add Mask")
             let revealAllItem = NSMenuItem(title: "Reveal All (White)", action: #selector(addWhiteMaskAction), keyEquivalent: "")
             revealAllItem.target = self
@@ -253,13 +256,14 @@ struct NativeLayerList: NSViewRepresentable {
                 return session.canEditLayers && session.activeLayer?.mask != nil && session.activeLayer?.isGroup == false && session.activeLayer?.adjustment == nil
             case #selector(toggleVisibilityAction):
                 return session.canEditLayers && session.activeLayer != nil
+            case #selector(addMaskMenuAction):
+                return session.canEditMask && session.activeLayer?.mask == nil
             default:
-                if menuItem.submenu != nil && menuItem.title == "Add Mask" {
-                    return session.canEditMask && session.activeLayer?.mask == nil
-                }
                 return true
             }
         }
+
+        @objc func addMaskMenuAction(_ sender: Any?) {}
 
         @objc func duplicateLayerAction(_ sender: Any?) {
             session.duplicateActiveLayer()

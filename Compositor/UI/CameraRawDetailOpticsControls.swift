@@ -124,11 +124,11 @@ struct CameraRawOpticsControls: View {
             }
             opticsSlider("Purple Amount", \.purpleAmount, range: CameraRawOpticsSettings.unitRange, reset: 0,
                          help: "Weakens purple fringes inside the purple hue range.")
-            hueRange("Purple Hue", low: \.purpleHueLow, high: \.purpleHueHigh,
+            hueRange("Purple Hue", low: \.purpleHueLow, high: \.purpleHueHigh, resetLow: 270, resetHigh: 310,
                      help: "Hue range where purple defringe runs.")
             opticsSlider("Green Amount", \.greenAmount, range: CameraRawOpticsSettings.unitRange, reset: 0,
                          help: "Weakens green fringes inside the green hue range.")
-            hueRange("Green Hue", low: \.greenHueLow, high: \.greenHueHigh,
+            hueRange("Green Hue", low: \.greenHueLow, high: \.greenHueHigh, resetLow: 60, resetHigh: 120,
                      help: "Hue range where green defringe runs.")
             opticsSlider("Vignetting", \.vignetteAmount, range: CameraRawOpticsSettings.toneRange, reset: 0,
                          help: "Brightens or darkens the corners to counter lens falloff.")
@@ -161,21 +161,24 @@ struct CameraRawOpticsControls: View {
         }
     }
 
-    private func hueRange(_ title: String, low: WritableKeyPath<CameraRawOpticsSettings, Double>,
-                          high: WritableKeyPath<CameraRawOpticsSettings, Double>, help: String) -> some View {
+    /// The reset pair is passed in rather than sniffed from the title, so the defaults stay
+    /// correct no matter what language the title is rendered in.
+    private func hueRange(_ title: LocalizedStringKey, low: WritableKeyPath<CameraRawOpticsSettings, Double>,
+                          high: WritableKeyPath<CameraRawOpticsSettings, Double>,
+                          resetLow: Double, resetHigh: Double, help: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(.secondary).help(help)
+            Text(title).font(.caption).foregroundStyle(.secondary).help(Text(help))
             HStack(spacing: 8) {
                 Text("Low").font(.caption2).help("Start of the hue range, in degrees.")
                 CameraRawSlider(value: raw.optics[keyPath: low], range: CameraRawOpticsSettings.hueRange, track: .plain,
                                 help: "Start of the hue range, in degrees.",
                                 onChange: { value in update { $0.cameraRaw.optics[keyPath: low] = value.rounded() } },
-                                onReset: { update { $0.cameraRaw.optics[keyPath: low] = title.contains("Purple") ? 270 : 60 } })
+                                onReset: { update { $0.cameraRaw.optics[keyPath: low] = resetLow } })
                 Text("High").font(.caption2).help("End of the hue range, in degrees.")
                 CameraRawSlider(value: raw.optics[keyPath: high], range: CameraRawOpticsSettings.hueRange, track: .plain,
                                 help: "End of the hue range, in degrees.",
                                 onChange: { value in update { $0.cameraRaw.optics[keyPath: high] = value.rounded() } },
-                                onReset: { update { $0.cameraRaw.optics[keyPath: high] = title.contains("Purple") ? 310 : 120 } })
+                                onReset: { update { $0.cameraRaw.optics[keyPath: high] = resetHigh } })
             }
         }
         .padding(.leading, CameraRawControls.labelWidth + 10)
