@@ -6,7 +6,7 @@ struct EditorCanvas: NSViewRepresentable {
     func makeNSView(context: Context) -> CanvasView { CanvasView(session: session) }
     func updateNSView(_ view: CanvasView, context: Context) {
         view.consumeFocusRequest(session.canvasFocusRequest)
-        _ = session.showsTransformControls // observed here so ⌘H redraws the transform box at once
+        _ = session.showsTransformControls // 在这里观察，这样 ⌘H 能立刻重绘变换框
         _ = session.showsGrid
         _ = session.layoutGrid
         _ = session.gridAppearance
@@ -20,13 +20,13 @@ struct EditorCanvas: NSViewRepresentable {
 
 final class CanvasView: NSView {
     var inlineTextEditor: InlineTextEditor?
-    /// The text being typed, rendered as the layer will hold it, remade only when its style changes.
+    /// 正在输入的文字，按图层最终保存的样子渲染，仅在样式变化时重建。
     private var draftTextCache: (style: LayerTextStyle, image: CGImage)?
-    /// The effects rendered for the text being edited, and what they were rendered from.
+    /// 为正在编辑的文字渲染的效果，以及渲染时所依据的输入。
     private var draftEffects: (image: CGImage, effects: LayerEffects, transform: LayerTransform, rendered: CGImage, inset: CGFloat)?
-    /// Which layer and text `draftEffects` were made for, so they can stand in once the edit is committed.
+    /// `draftEffects` 是为哪个图层和哪段文字准备的，以便编辑提交后可以临时顶上去。
     private var draftEffectsSource: (layerID: UUID, style: LayerTextStyle)?
-    /// The text being typed as pixels, where the editor shows it (see InlineTextEditor).
+    /// 正在输入的文字（以像素形式），编辑器在此处显示它（见 `InlineTextEditor`）。
     private var draftText: (image: CGImage, transform: LayerTransform)? {
         guard let draft = session.textDraft, let transform = inlineTextEditor?.shownTransform else { draftTextCache = nil; return nil }
         if draftTextCache?.style != draft.style {
@@ -43,7 +43,7 @@ final class CanvasView: NSView {
         lastFocusRequest = request
         DispatchQueue.main.async { [weak self] in
             guard let self, let window = self.window, window.attachedSheet == nil else { return }
-            // Text being edited takes the keys back (after the color picker, say), so typing and ⌘Return still reach it.
+            // 正在编辑的文字重新接收按键（例如从颜色选择器切回后），以便输入和 ⌘Return 仍能送达它。
             if self.session.textDraft == nil { window.makeFirstResponder(self) }
             else if let editor = self.inlineTextEditor { window.makeFirstResponder(editor.textView) }
         }
@@ -55,21 +55,21 @@ final class CanvasView: NSView {
     private var spaceHeld = false
     private var panPhysicalKey: UInt16?
     private var brushPointer: CGPoint?
-    /// The layer being drawn into a surface for SeparableBlend, which draws it plainly and blends it afterwards.
+    /// 正在被绘制到 surface 上的图层，供 SeparableBlend 使用——它先正常绘制图层，之后再做混合。
     private var normalBlendLayerID: UUID?
     private func blendMode(of layer: ImageLayer) -> LayerBlendMode {
         layer.id == normalBlendLayerID ? .normal : session.displayedBlendMode(for: layer)
     }
     private let brushCursor = BrushCursorOverlay()
     private var lastDragPoint: CGPoint?
-    /// Where a middle-button pan last was (see otherMouseDown).
+    /// 中键拖动上一次所在的位置（见 `otherMouseDown`）。
     private var middlePanPoint: CGPoint?
-    /// Where Shift was last pressed in the stroke in progress (or where the stroke started, if it was held then):
-    /// the line the stroke is kept on while Shift stays down.
+    /// Shift 在进行中的笔触上最后一次按下的位置（如果按下时已按住 Shift，则是笔触起点）：
+    /// Shift 持续按住时，笔触被约束在这条直线上。
     private var brushAxisAnchor: CGPoint?
-    /// The axis that line runs along, chosen by which way the stroke first moves once Shift is down.
+    /// 该直线沿哪条轴延伸，由 Shift 按下后笔触最初的移动方向决定。
     private var brushAxisHorizontal: Bool?
-    /// Where the stroke last went, so pressing Shift mid-stroke locks from there rather than from its start.
+    /// 笔触上一次的位置，这样在笔触中段按下 Shift 时会从该处锁定，而不是从笔触起点。
     private var brushLastPixel: CGPoint?
     private var transformDrag: TransformDrag? {
         didSet { if transformDrag == nil { releaseDragCursor() } }
@@ -96,7 +96,7 @@ final class CanvasView: NSView {
             || session.filterEdit?.samplesDefringe == true
             || session.filterEdit?.drawingCameraRawGeometryGuide == true
     }
-    /// View point where a targeted-adjustment drag began.
+    /// 目标调整拖动在视图坐标中的起始点。
     private var hueTargetStart: CGPoint?
     private var samplingColor = false
     private enum GradientHandle { case start, end }
@@ -105,28 +105,28 @@ final class CanvasView: NSView {
     private var modifierMonitor: Any?
     private var sampleClickMonitor: Any?
     private var cursorUpdateMonitor: Any?
-    /// A sampling click taken straight from the event stream, so its drag and release follow it here too.
+    /// 直接从事件流中取得的取样点击，这样它的拖动与松开也会顺延到此处。
     private var sampleClickActive = false
     private var keyMonitor: Any?
-    /// Document point where a selection-outline drag began.
+    /// 选区轮廓拖动在文档坐标中的起始点。
     private var selectionDragStart: CGPoint?
-    /// Document point where a Cmd-drag of the selected pixels began.
+    /// 选中像素的 Cmd-拖动在文档坐标中的起始点。
     private var pixelDragStart: CGPoint?
     private var duplicatesTransformOnDrag = false
-    /// Snapping for the crop drag in progress, built when it starts (the zoom can't change mid-drag).
+    /// 进行中的裁剪拖动的吸附信息，在拖动开始时构建（拖动过程中缩放不会改变）。
     private var cropSnap: CropSnap?
-    /// How close, in screen points, a crop edge comes to a layer or canvas edge before it snaps.
+    /// 以屏幕点计，裁剪边距图层边或画布边多近时开始吸附。
     static let cropSnapDistance: CGFloat = 8
-    /// Whether Shift squares the Marquee draft. False while a Shift held at the press (which chose Add)
-    /// is still down; letting it go arms it, so pressing Shift again squares the shape.
+    /// Shift 是否能将 Marquee 草稿约束为正方形。按下时已按住 Shift（用于选择 Add 模式）期间为 false；
+    /// 放开后即进入待命状态，再次按下 Shift 即可将形状约束为正方形。
     private var marqueeConstrainArmed = true
-    /// The Marquee draft's latest drag point, so a Shift change can reshape it without a mouse move.
+    /// Marquee 草稿的最新拖动点，这样 Shift 状态变化时无需鼠标移动也能重新塑形。
     private var marqueeDragPixel: CGPoint?
-    /// While a Marquee is dragged against or past the canvas edge, pans the view toward the pointer.
+    /// Marquee 被拖到画布边缘或越过边缘时，将视图朝指针方向平移。
     private var marqueeAutoscroll: Timer?
     private var marqueeAutoscrollPoint: CGPoint?
-    /// Arrow with scissors: Cmd-dragging here cuts and moves the selected pixels.
-    /// An invisible cursor, for tools that draw their own pointer on the canvas.
+    /// 箭头带剪刀：在此处 Cmd-拖动会剪切并移动选中的像素。
+    /// 不可见的光标，用于工具自己在画布上绘制指针的情况。
     static let hiddenCursor = NSCursor(image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero)
     static let movePixelsCursor: NSCursor = {
         let base = NSCursor.arrow
@@ -147,7 +147,7 @@ final class CanvasView: NSView {
         }
         return NSCursor(image: image, hotSpot: base.hotSpot)
     }()
-    /// The pointer arrow as a vector path, tip at the origin (y down), about the system arrow's size.
+    /// 指针箭头（作为矢量路径），箭尖在原点（y 朝下），尺寸接近系统箭头。
     private static let arrowPath: NSBezierPath = {
         let arrow = NSBezierPath()
         for (index, point) in [(0, 0), (0, 16.5), (3.9, 12.8), (6.6, 19), (9.2, 17.9), (6.6, 11.8), (11.8, 11.8)].enumerated() {
@@ -156,11 +156,10 @@ final class CanvasView: NSView {
         }
         arrow.close()
         arrow.lineJoinStyle = .round
-        arrow.lineWidth = 2.2 // stroked under the fill, so about 1 pt of outline shows
+        arrow.lineWidth = 2.2 // 在填充下方描边，因此约显示 1 pt 的描边
         return arrow
     }()
-    /// Shapes drawn back to front, outlined like the system cursors (each path's line width sets the
-    /// outline, stroked under its fill), with a soft shadow. Coordinates are y-down.
+    /// 由后往前绘制的形状，按系统光标的样式描边（每条路径的线宽即为描边宽度，在填充下方描边），带柔和阴影。坐标 y 朝下。
     private static func outlinedCursor(size: NSSize, hotSpot: NSPoint,
                                        _ shapes: [(path: NSBezierPath, fill: NSColor, outline: NSColor)]) -> NSCursor {
         let image = NSImage(size: size, flipped: true) { _ in
@@ -181,7 +180,7 @@ final class CanvasView: NSView {
         }
         return NSCursor(image: image, hotSpot: hotSpot)
     }
-    /// Arrows drawn back to front, each offset down-right from the hot spot.
+    /// 由后往前绘制的箭头，每个箭头从 hot spot 出发向右下偏移。
     private static func arrowCursor(_ arrows: [(offset: CGFloat, fill: NSColor, outline: NSColor)]) -> NSCursor {
         let tip = NSPoint(x: 4, y: 3)
         return outlinedCursor(size: NSSize(width: 28, height: 32), hotSpot: tip, arrows.map { arrow in
@@ -190,19 +189,18 @@ final class CanvasView: NSView {
             return (path, arrow.fill, arrow.outline)
         })
     }
-    /// Photoshop's duplicate pointer: a black arrow over a white one offset behind it. Shown where a
-    /// drag copies — Option-dragging a layer, Cmd-Option-dragging selected pixels.
+    /// Photoshop 的复制指针：黑色箭头叠加在后方偏移的白色箭头上。出现在拖动复制的场合——
+    /// Option-拖动图层、Cmd-Option-拖动选中像素。
     static let duplicateCursor = arrowCursor([(offset: 5, fill: .white, outline: .black), (offset: 0, fill: .black, outline: .white)])
-    /// A white arrow over a transform handle that distorts when dragged (Cmd held, or already distorted).
+    /// 变换控制点上方的白色箭头，拖动时表示可扭曲（按住 Cmd，或已处于扭曲状态）。
     static let distortCursor = arrowCursor([(offset: 0, fill: .white, outline: .black)])
-    /// Photoshop's Move pointer: the arrow with a small four-way arrow at its lower right. Shown wherever
-    /// a press would drag a layer, away from the transform handles.
+    /// Photoshop 的移动指针：箭头右下角带一个小四向箭头。在变换控制点之外的任何按压会拖动图层的位置显示它。
     static let moveCursor: NSCursor = {
         let base = NSCursor.arrow
-        // Heads kept narrow and well apart, so the four arrows stay distinct at badge size.
+        // 头部保持窄而分开，这样四个箭头在徽标尺寸下仍清晰可辨。
         let badge = fourArrowPath(center: NSPoint(x: base.hotSpot.x + 14.5, y: base.hotSpot.y + 17.5),
                                   reach: 6.5, shaft: 0.75, head: 2, headLength: 2.5)
-        badge.lineWidth = 1.6 // stroked under the fill, so about 0.8 pt of white outline shows
+        badge.lineWidth = 1.6 // 在填充下方描边，因此约显示 0.8 pt 的白色描边
         let image = NSImage(size: NSSize(width: 36, height: 36), flipped: true) { _ in
             base.image.draw(in: NSRect(origin: .zero, size: base.image.size), from: .zero, operation: .sourceOver,
                             fraction: 1, respectFlipped: true, hints: nil)
@@ -215,11 +213,11 @@ final class CanvasView: NSView {
         return NSCursor(image: image, hotSpot: base.hotSpot)
     }()
 
-    /// Four arrows around `center` (y-down): each reaches `reach` from the center along a shaft of
-    /// half-width `shaft`, ending in a head `head` wide on each side and `headLength` long.
+    /// 围绕 `center` 的四个箭头（y 朝下）：每个箭头沿杆身从中心延伸 `reach` 的距离，杆身半宽为 `shaft`，
+    /// 末端为两侧各 `head` 宽、长 `headLength` 的箭头头部。
     private static func fourArrowPath(center: NSPoint, reach: CGFloat, shaft: CGFloat, head: CGFloat, headLength: CGFloat) -> NSBezierPath {
-        // The top arrow, from the shaft on its left round the tip to the shaft on its right; turned a
-        // quarter at a time ((x, y) → (−y, x)) it traces the other three arrows clockwise.
+        // 顶部的箭头，从其左侧的杆身绕到箭头尖端，再到其右侧的杆身；每次旋转 90 度
+        //（`(x, y) → (−y, x)`）就顺时针描出其余三个箭头。
         let arm: [(CGFloat, CGFloat)] = [(-shaft, -reach + headLength), (-head, -reach + headLength), (0, -reach),
                                          (head, -reach + headLength), (shaft, -reach + headLength), (shaft, -shaft)]
         let path = NSBezierPath()
@@ -234,12 +232,12 @@ final class CanvasView: NSView {
         path.lineJoinStyle = .round
         return path
     }
-    /// Arrow with a small dashed box: dragging here moves the selection outline.
+    /// 箭头带一个小虚线框：在此处拖动会移动选区轮廓。
     static let moveSelectionCursor = selectionBadged(.arrow, boxAt: CGPoint(x: 9.5, y: 13.5))
-    /// Pointing hand with a dashed box: Cmd-click a mask thumbnail to load it as a selection.
+    /// 指形手光标带虚线框：Cmd-点击缩略图将其作为选区载入。
     static let loadSelectionCursor = selectionBadged(.pointingHand, boxAt: CGPoint(x: 11.5, y: 14.5))
 
-    /// Adds a small dashed selection box to a system cursor, offset from its hot spot.
+    /// 给系统光标添加一个小虚线选区框，偏移位置相对于其 hot spot。
     static func selectionBadged(_ base: NSCursor, boxAt offset: CGPoint) -> NSCursor {
         let image = NSImage(size: NSSize(width: 36, height: 36), flipped: true) { _ in
             base.image.draw(in: NSRect(origin: .zero, size: base.image.size), from: .zero, operation: .sourceOver,
@@ -256,10 +254,10 @@ final class CanvasView: NSView {
         }
         return NSCursor(image: image, hotSpot: base.hotSpot)
     }
-    /// Which selection tool a crosshair names: the tool rail's icon, small, beneath and right of the crosshair.
+    /// 十字准星所指明的选区工具：工具栏中的图标，缩小显示，位于十字准星的右下方。
     enum SelectionIcon: CaseIterable { case freehandLasso, polygonalLasso, rectangleMarquee, ellipseMarquee, objectSelection }
 
-    /// Crosshair with the tool's icon, and a "+" (add) or "−" (subtract) beside the icon, as Photoshop shows.
+    /// 十字准星带工具图标，并在图标旁附 "+"（添加）或 "−"（减去）标记，与 Photoshop 一致。
     static let selectionCursors: [SelectionIcon: [SelectionMode: NSCursor]] = Dictionary(uniqueKeysWithValues:
         SelectionIcon.allCases.map { icon in
             (icon, Dictionary(uniqueKeysWithValues: SelectionMode.allCases.map { ($0, selectionCursor(icon, mode: $0)) }))
@@ -276,7 +274,7 @@ final class CanvasView: NSView {
             if mode != .replace {
                 let center = CGPoint(x: box.maxX + 5, y: box.midY)
                 let badge = NSBezierPath()
-                // Same white-outlined black stroke and round ends as the system crosshair.
+                // 与系统十字准星一样使用白边黑色描边和圆头。
                 badge.move(to: CGPoint(x: center.x - 3, y: center.y))
                 badge.line(to: CGPoint(x: center.x + 3, y: center.y))
                 if mode == .add {
@@ -296,10 +294,10 @@ final class CanvasView: NSView {
         return NSCursor(image: image, hotSpot: hotSpot)
     }
 
-    /// The tool rail's icon at cursor size: black with a thin white outline, so it reads on any image.
+    /// 光标尺寸下工具栏图标的样式：黑色细线加白色描边，因此在任何图像上都清晰可读。
     private static func drawSelectionIcon(_ icon: SelectionIcon, in box: NSRect) {
         if icon == .polygonalLasso {
-            // The rail's own drawing (see PolygonalLassoToolIcon), on its 18-unit grid.
+            // 沿用工具栏自己的绘制（见 `PolygonalLassoToolIcon`），使用其 18 单位的网格。
             let unit = box.width / 18
             func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: box.minX + x * unit, y: box.minY + y * unit) }
             let path = NSBezierPath()
@@ -356,7 +354,7 @@ final class CanvasView: NSView {
                 .withSymbolConfiguration(size.applying(.init(paletteColors: [.white]))),
               let black = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
                 .withSymbolConfiguration(size.applying(.init(paletteColors: [.black]))) else { return }
-        // The symbol keeps its own shape, fitted in the box.
+        // 符号保持其自身形状，适配到框内。
         let scale = min(box.width / black.size.width, box.height / black.size.height)
         let rect = NSRect(x: box.midX - black.size.width * scale / 2, y: box.midY - black.size.height * scale / 2,
                           width: black.size.width * scale, height: black.size.height * scale)
@@ -365,7 +363,7 @@ final class CanvasView: NSView {
         }
         black.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
-    /// A wand whose sparkle is the hot spot, with the same "+" / "−" badges as the other selection tools.
+    /// 魔棒，其星花位于 hot spot，并与其他选区工具一样带有 "+" / "−" 标记。
     static let wandCursors: [SelectionMode: NSCursor] = Dictionary(uniqueKeysWithValues: SelectionMode.allCases.map { mode in
         let hotSpot = NSPoint(x: 7, y: 7)
         let image = NSImage(size: NSSize(width: 34, height: 34), flipped: true) { _ in
@@ -387,7 +385,7 @@ final class CanvasView: NSView {
                 }
             }
             for path in [stick, marks] { path.lineCapStyle = .round }
-            // White outlines first, so neither shape's outline covers the other's black line.
+            // 先画白色描边，这样任一形状的描边都不会覆盖另一形状的黑色线条。
             NSColor.white.setStroke()
             stick.lineWidth = 5
             stick.stroke()
@@ -411,7 +409,7 @@ final class CanvasView: NSView {
         let black = symbol.withSymbolConfiguration(.init(paletteColors: [.black]))!
         let image = NSImage(size: NSSize(width: 24, height: 24), flipped: false) { _ in
             let glyph = CGRect(x: 2, y: 2, width: 20, height: 20)
-            // Expand the white silhouette, then draw the black symbol on top.
+            // 先扩大白色轮廓，再在其上绘制黑色符号。
             for step in 0..<16 {
                 let angle = CGFloat(step) * .pi / 8
                 white.draw(in: glyph.offsetBy(dx: cos(angle) * 1.25, dy: sin(angle) * 1.25))
@@ -422,7 +420,7 @@ final class CanvasView: NSView {
         return NSCursor(image: image, hotSpot: NSPoint(x: 12, y: 12))
     }()
     private static let eyedropperCursor = makeEyedropperCursor(badge: nil)
-    /// Color Range's eyedroppers while Shift (add) or Option (take away) is held, or its + or − one is chosen.
+    /// Color Range 的取色器：按住 Shift（添加）或 Option（去除）时显示，或已选择 + 或 − 模式时显示。
     private static let eyedropperAddCursor = makeEyedropperCursor(badge: "plus")
     private static let eyedropperRemoveCursor = makeEyedropperCursor(badge: "minus")
     private static func makeEyedropperCursor(badge: String?) -> NSCursor {
@@ -438,8 +436,7 @@ final class CanvasView: NSView {
                 white.draw(in: glyph.offsetBy(dx: cos(angle) * 1.25, dy: sin(angle) * 1.25))
             }
             black.draw(in: glyph)
-            // The badge sits bottom right, clear of the dropper tip: a black + or − on a white disc with a black rim, so it
-            // reads on any image.
+            // 标记位于右下角，远离滴管尖端：白底黑边圆盘上绘有黑色 + 或 −，因此在任何图像上都清晰可读。
             if let mark {
                 let spot = CGRect(x: 12.5, y: 0.5, width: 11, height: 11)
                 let disc = NSBezierPath(ovalIn: spot)
@@ -450,24 +447,23 @@ final class CanvasView: NSView {
             }
             return true
         }
-        // The dropper tip sits at the glyph's bottom-left.
+        // 滴管尖端位于字形左下角。
         return NSCursor(image: image, hotSpot: NSPoint(x: 3, y: 21))
     }
-    /// With Color Range's panel focused, anything that rebuilds this view's cursor rects (a new selection redrawn, the
-    /// panel taking the focus back after a click) leaves the arrow up until the pointer moves. Put the eyedropper back
-    /// once that's done.
+    /// 当 Color Range 面板获得焦点时，任何重建本视图光标矩形的事件（新选区重绘、面板在点击后重新拿回焦点）
+    /// 都会让箭头停留到指针移动为止。处理完之后将取色器放回原位。
     private func keepColorRangeCursor(after delay: TimeInterval = 0) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.session.colorRange != nil, self.pointerOverCanvas else { return }
             self.pickCursor.set()
         }
     }
-    /// The pointer is on the canvas itself, not over a panel floating above it.
+    /// 指针位于画布自身之上，而非悬浮于其上的面板之上。
     private var pointerOverCanvas: Bool {
         guard let window, bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)) else { return false }
         return NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0) == window.windowNumber
     }
-    /// The eyedropper to show now: Color Range's says whether a click adds or takes away.
+    /// 当前应显示的取色器：Color Range 的取色器会指明点击是添加还是去除。
     private var pickCursor: NSCursor {
         switch session.colorRange?.effectiveMode {
         case .add: Self.eyedropperAddCursor
@@ -476,7 +472,7 @@ final class CanvasView: NSView {
         }
     }
 
-    /// The Zoom tool's cursors: a magnifier with a plus, or a minus while Option is held.
+    /// 缩放工具的光标：放大镜带加号，按住 Option 时变为减号。
     private static func zoomCursor(out: Bool) -> NSCursor {
         let symbol = NSImage(systemSymbolName: out ? "minus.magnifyingglass" : "plus.magnifyingglass",
                              accessibilityDescription: out ? "Zoom out" : "Zoom in")!
@@ -488,8 +484,8 @@ final class CanvasView: NSView {
                 let angle = CGFloat(step) * .pi / 8
                 white.draw(in: glyph.offsetBy(dx: cos(angle) * 1.25, dy: sin(angle) * 1.25))
             }
-            // The lens filled white, so the cursor reads on any image. Measured from the symbol: its lens sits at
-            // 41% across and 40% down the glyph, with an inside radius of about 27% of it.
+            // 透镜填充为白色，因此光标在任何图像上都清晰可读。根据符号测量：透镜位于字形 41% 横、40% 纵处，
+            // 内半径约为字形的 27%。
             let center = CGPoint(x: glyph.minX + glyph.width * 0.41, y: glyph.maxY - glyph.height * 0.40)
             let radius = glyph.width * 0.29
             NSColor.white.setFill()
@@ -497,13 +493,12 @@ final class CanvasView: NSView {
             black.draw(in: glyph)
             return true
         }
-        // The lens's center, toward the top-left of the glyph.
+        // 透镜中心，靠近字形左上角。
         return NSCursor(image: image, hotSpot: NSPoint(x: 10, y: 10))
     }
     private static let zoomInCursor = zoomCursor(out: false)
     private static let zoomOutCursor = zoomCursor(out: true)
-    /// A Zoom tool press: dragging left or right zooms smoothly about where it began; a press that doesn't move
-    /// zooms a step on release instead.
+    /// 缩放工具的按压：左右拖动会从起点开始平滑缩放；若按压后未移动，则在松开时缩放一级。
     private var zoomDrag: (start: CGPoint, zoom: CGFloat, moved: Bool)?
 
     private struct DisplayState: Equatable {
@@ -513,14 +508,14 @@ final class CanvasView: NSView {
             let imageID: ObjectIdentifier?
             let maskID: ObjectIdentifier?
             let maskSourceID: UUID?
-            /// Moving a layer into or out of a masked folder changes how it is clipped.
+            /// 将图层移入或移出带蒙版的文件夹，会改变其裁剪方式。
             let parentID: UUID?
             let visible: Bool
             let opacity: Double
             let blendMode: LayerBlendMode
             let adjustment: LayerAdjustment?
             let effects: LayerEffects?
-            /// Where the mask shows when placed apart from the layer.
+            /// 蒙版与图层分离放置时的显示位置。
             let maskPlacement: LayerTransform?
         }
         let brushRevision: Int
@@ -530,24 +525,24 @@ final class CanvasView: NSView {
         let renderBounds: CGRect?
         let viewport: CanvasViewport
         let layers: [Layer]
-        /// Folders have no pixels, so their masks are tracked apart from `layers`.
+        /// 文件夹没有像素，因此其蒙版在 `layers` 之外单独追踪。
         struct FolderMask: Equatable {
             let id: UUID
             let maskID: ObjectIdentifier?
             let transform: LayerTransform
         }
         let folderMasks: [FolderMask]
-        /// The text being typed, which the canvas draws as pixels.
+        /// 正在输入的文字，画布将其绘制为像素。
         let textStyle: LayerTextStyle?
         let textTransform: LayerTransform?
-        /// The mask shown by itself, which may be one the composite doesn't draw (disabled, or a folder's).
+        /// 单独显示的蒙版，可能是合成时不会绘制的那个（已禁用，或属于文件夹）。
         let maskAlone: ObjectIdentifier?
     }
 
     @discardableResult
     func synchronizeDisplay() -> Bool {
-        // The stroke is over: what its surface holds stands in until the layer's own effects have been rebuilt from
-        // the pixels it left, so nothing blinks at the end of a stroke.
+        // 笔触结束：其 surface 中持有的内容会临时顶替，直到图层自身的效果基于笔触留下的像素被重建完成，
+        // 以免笔触末尾出现闪烁。
         if session.brushStroke == nil, let surface = strokeSurface {
             if let built = surface.image, let placement = surface.placement {
                 session.effectsPreviews.seed(surface.layerID, image: built, placement: placement)
@@ -556,14 +551,14 @@ final class CanvasView: NSView {
         }
         synchronizeInlineText()
         if session.tool != .type, textBoxRect != nil { textBoxAnchor = nil; textBoxRect = nil; needsDisplay = true }
-        // Image identity detects raster replacement without comparing pixel data.
+        // 通过图像标识检测栅格替换，无需比较像素数据。
         let document = session.document
         let documentPresenceChanged = (displayedState?.documentID != nil) != (document != nil)
-        // Folders hold no pixels and so aren't listed below; their opacity reaches the canvas
-        // through the layers inside them, which is what has to be watched for a change.
+        // 文件夹不含像素，因此不列入下方；它们的不透明度通过内部的图层传递到画布，
+        // 这才是需要监听变化的部分。
         let opacities = document?.effectiveOpacities ?? [:]
-        // Worked out once: each asks for the whole layer hierarchy, which on a document of hundreds of layers is too much
-        // to redo for every layer on every event.
+        // 一次性算出：每个查询都要遍历整个图层层级，在数百图层的情况下，
+        // 每次事件都为每个图层重新计算代价过高。
         let visible = document?.effectiveVisibleIDs ?? []
         let state = DisplayState(brushRevision: session.brushRevision, pixelGrid: session.showsPixelGrid, documentID: document?.id, size: document?.size, renderBounds: renderBounds, viewport: session.viewport,
             layers: (document.map { $0.layers.contains(where: { $0.maskSourceID != nil }) ? $0.layers : $0.renderLayers } ?? []).filter { $0.asset != nil || $0.adjustment != nil }.map {
@@ -607,13 +602,13 @@ final class CanvasView: NSView {
             sampleRing.isHidden = true
             updateTrackingAreas()
             window?.invalidateCursorRects(for: self)
-            // Cursor rects only apply when the pointer enters them, so update an existing document's
-            // cursor here when picking starts or ends. An empty canvas leaves the form's cursor alone.
+            // 光标矩形仅在指针进入时才生效，因此在取样开始或结束时，
+            // 在此处更新已有文档的光标。空白画布则保持表单自身的光标不动。
             if session.document != nil, let window,
                bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)) {
                 if picking { pickCursor.set() } else { restoreToolCursor() }
             }
-            // Color Range's panel appears, and takes the focus, a moment after it opens.
+            // Color Range 面板在打开稍后才出现并获得焦点。
             if session.colorRange != nil { keepColorRangeCursor(); keepColorRangeCursor(after: 0.15) }
         }
         if displayedCropRect != transformOverlay.cropViewRect {
@@ -626,7 +621,7 @@ final class CanvasView: NSView {
         }
         updateBrushCursor()
         updateAntsTimer()
-        // Observe selection only for the lightweight handles overlay.
+        // 仅出于轻量级控制点叠加层的目的观察选区。
         _ = session.activeLayerID
         _ = session.cropRect
         transformOverlay.needsDisplay = true
@@ -654,9 +649,9 @@ final class CanvasView: NSView {
         addSubview(transformOverlay)
         addSubview(brushCursor)
         addSubview(sampleRing)
-        // Each overlay draws into its own layer. Without one, redrawing a transparent overlay (every crop
-        // or transform drag, marching-ants tick, or cursor move) makes AppKit redraw the canvas beneath —
-        // the whole checkerboard and layer composite. All three get layers so they keep their stacking order.
+        // 每个叠加层都绘制到各自的 layer 上。没有 layer 的话，重绘一个透明叠加层（每次裁剪或变换拖动、
+        // 蚂蚁线跳动或光标移动）都会让 AppKit 重新绘制下面的画布——也就是整个棋盘格和图层合成结果。
+        // 这三者都使用 layer 以保持叠加顺序。
         for overlay in [lines, transformOverlay, brushCursor, sampleRing] as [NSView] { overlay.wantsLayer = true }
         lines.autoresizingMask = [.width, .height]
         lines.drawLines = { [weak self] dirtyRect in self?.drawLines(in: dirtyRect) }
@@ -686,11 +681,10 @@ final class CanvasView: NSView {
         if let sampleClickMonitor { NSEvent.removeMonitor(sampleClickMonitor); self.sampleClickMonitor = nil }
         if let cursorUpdateMonitor { NSEvent.removeMonitor(cursorUpdateMonitor); self.cursorUpdateMonitor = nil }
         guard window != nil else { return }
-        // Sampling the canvas for an open panel (the color picker, Levels, a filter) handles the click here, before
-        // the window sees it: a click would make this window key, and the panel would lose focus and its shadow
-        // would fade until the release gave focus back.
-        // With Color Range's panel focused, the cursor update AppKit sends after Shift or Option changes reaches a view
-        // that answers with the arrow. Over the canvas, answer it here with the eyedropper instead.
+        // 为打开的面板（颜色选择器、色阶、滤镜）对画布进行取样时，在窗口看到点击事件之前先在此处处理：
+        // 点击会让本窗口成为 key window，面板会失去焦点并伴随阴影淡出，直到松开鼠标焦点才回来。
+        // 当 Color Range 面板获得焦点时，AppKit 在 Shift 或 Option 变化后发送的 cursor-update 事件
+        // 会到达一个返回箭头光标的视图。在画布上时，应在此处改为回应取色器。
         cursorUpdateMonitor = NSEvent.addLocalMonitorForEvents(matching: .cursorUpdate) { [weak self] event in
             guard let self, self.session.colorRange != nil, self.pointerOverCanvas else { return event }
             self.pickCursor.set()
@@ -715,45 +709,45 @@ final class CanvasView: NSView {
             return nil
         }
         optionHeld = NSEvent.modifierFlags.contains(.option)
-        // A tab mounts a new canvas. Restore keyboard focus after SwiftUI finishes
-        // installing it, without taking focus from a newly presented dialog.
+        // 新建标签页会挂载一个新画布。等 SwiftUI 完成安装后恢复键盘焦点，
+        // 同时不要抢占新弹出对话框的焦点。
         DispatchQueue.main.async { [weak self] in
             guard let self, self.session.document != nil, let window = self.window,
                   window.attachedSheet == nil, !self.session.showsNewDocument,
                   !self.session.showsImporter, self.session.colorPicker == nil else { return }
             window.makeFirstResponder(self)
         }
-        // Modifier changes reach only the first responder; watch them app-wide so the
-        // lasso badge updates even while another control has keyboard focus.
+        // 修饰键的变化只会传给第一响应者；在全局监听它们，
+        // 这样即使其他控件持有键盘焦点，套索标记也会更新。
         modifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             guard let self else { return event }
             self.optionHeld = event.modifierFlags.contains(.option)
-            // Color Range: Shift adds and Option takes away, shown on the eyedropper and in its panel as they're held.
+            // Color Range：Shift 添加、Option 去除，按住时分别显示在取色器及其面板上。
             if let edit = self.session.colorRange {
                 let flags = event.modifierFlags
                 let held: HueSampleMode? = flags.contains(.option) ? .remove : flags.contains(.shift) ? .add : nil
                 if edit.held != held {
                     edit.held = held
-                    // Now, and again once AppKit is done with the key change, in case anything set the arrow meanwhile.
+                    // 立刻设置一次，等 AppKit 处理完按键变化后再设置一次，以防期间有其他代码把光标改成箭头。
                     if self.pointerOverCanvas { self.pickCursor.set() }
                     self.keepColorRangeCursor()
                 }
             }
-            // A Marquee drag reshapes as Shift goes down or up, without waiting for the mouse to move.
+            // Marquee 拖动过程中 Shift 按下或松开时立即重塑形状，不必等待鼠标移动。
             if let pixel = self.marqueeDragPixel, let kind = self.session.lassoDraft?.kind, kind == .rectangle || kind == .ellipse {
                 self.dragMarqueeDraft(to: pixel, flags: event.modifierFlags)
             }
-            // So does a crop drag as Option (symmetry) or Control (no snapping) changes.
+            // 裁剪拖动也同理：Option（对称）或 Control（不吸附）变化时立即响应。
             if let drag = self.cropDrag, self.session.tool == .crop, let document = self.session.document, let window = self.window {
                 self.dragCrop(drag, to: self.convert(window.mouseLocationOutsideOfEventStream, from: nil),
                               flags: event.modifierFlags, documentSize: document.size)
             }
             self.synchronizeDisplay()
             self.updateBrushCursor()
-            // Only while the pointer is over the canvas: rebuilding its cursor rects with the pointer somewhere
-            // else (the Layers panel, holding Option for a clipping mask) takes that view's cursor away.
-            // Not while Color Range is open: its eyedropper covers the whole canvas anyway, and with its panel focused
-            // the rebuild shows the arrow for a moment before the eyedropper comes back.
+            // 仅在指针位于画布上时才这样做：若指针在其他位置（图层面板、按住 Option 创建剪贴蒙版）
+            // 时重建光标矩形，会夺走该视图的光标。
+            // Color Range 打开期间不重建：其取色器已覆盖整个画布，且面板获得焦点时重建会让箭头短暂显示
+            // 一下再切回取色器。
             if self.session.document != nil, self.session.colorRange == nil, let window = self.window,
                self.visibleRect.contains(self.convert(window.mouseLocationOutsideOfEventStream, from: nil)) {
                 self.window?.invalidateCursorRects(for: self)
@@ -767,8 +761,8 @@ final class CanvasView: NSView {
             }
             return event
         }
-        // Window-wide keys that work wherever focus sits — the canvas, the Layers panel, a header
-        // control, the tool rail — except while typing in a text field.
+        // 全窗口生效的快捷键——在画布、图层面板、顶部控件、工具栏等任意焦点位置都能用，
+        // 但在文本框中输入时除外。
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let originalEvent = event
             guard let event = ShortcutSettings.shared.canvasEvent(event) else { return originalEvent }
@@ -777,12 +771,12 @@ final class CanvasView: NSView {
             if self.handleKeyboardZoom(event) { return nil }
             guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                   let key = event.charactersIgnoringModifiers else { return originalEvent }
-            // Shift-+ / Shift-− step the active layer's blend mode, in every tool.
+            // Shift-+ / Shift-− 在任何工具中都会切换当前图层的混合模式。
             if event.modifierFlags.contains(.shift), key == "+" || key == "_" || event.keyCode == 24 || event.keyCode == 27 {
                 self.session.cycleBlendMode(forward: key == "+" || event.keyCode == 24)
                 return nil
             }
-            // Brush size ([ ]) and hardness (Shift-[ ]); with focus on the canvas its own keyDown handles them.
+            // 笔刷尺寸（[ ]）与硬度（Shift-[ ]）；画布自身取得焦点时由其 keyDown 处理。
             guard (self.session.tool.isBrushTool), self.session.levels == nil, window.firstResponder !== self,
                   ["[", "]", "{", "}"].contains(key) else { return originalEvent }
             if key == "[" || key == "]" { self.session.changeBrushSize(increase: key == "]") }
@@ -791,7 +785,7 @@ final class CanvasView: NSView {
         }
     }
 
-    /// Handle default zoom shortcuts on keyDown, including key repeat, without waiting for a menu command.
+    /// 在 keyDown 时处理默认的缩放快捷键（包括按键重复），无需等待菜单命令。
     private func handleKeyboardZoom(_ event: NSEvent) -> Bool {
         guard session.document != nil, event.modifierFlags.contains(.command),
               event.modifierFlags.intersection([.control, .option]).isEmpty else { return false }
@@ -801,7 +795,7 @@ final class CanvasView: NSView {
         let zoomOutIsDefault = ShortcutDefinition.all.first(where: { $0.isMenu && $0.title == "Zoom Out" })
             .map { ShortcutSettings.shared.chord($0) == $0.original } ?? true
 
-        // '+' is '=' with Shift on a Mac keyboard; the keypad has its own key codes.
+        // 在 Mac 键盘上，'+' 即 Shift+'='；数字小键盘有各自的键码。
         let isZoomIn = [24, 69].contains(event.keyCode)
         let isZoomOut = [27, 78].contains(event.keyCode) && !event.modifierFlags.contains(.shift)
         guard (isZoomIn && zoomInIsDefault) || (isZoomOut && zoomOutIsDefault) else { return false }
@@ -813,9 +807,9 @@ final class CanvasView: NSView {
 
     private var lassoCursor: NSCursor { lassoCursor(flags: NSEvent.modifierFlags) }
 
-    /// In New mode over the selection, the move cursor; otherwise the badged crosshair. Over the
-    /// selection, Cmd shows the scissors (cut and move its pixels) and Cmd-Option the copy cursor.
-    /// `location` is the pointer in view coordinates, when an event supplies it.
+    /// 在选区上的 New 模式下显示移动光标；否则显示带标记的十字准星。
+    /// 在选区上，Cmd 显示剪刀（剪切并移动像素），Cmd-Option 显示复制光标。
+    /// 若事件提供了指针位置，`location` 即为视图坐标中的指针。
     private func lassoCursor(flags: NSEvent.ModifierFlags, at location: CGPoint? = nil) -> NSCursor {
         let mode = session.lassoCursorMode(shift: flags.contains(.shift), option: flags.contains(.option))
         if selectionDragStart != nil { return Self.moveSelectionCursor }
@@ -832,10 +826,10 @@ final class CanvasView: NSView {
         return Self.selectionCursors[icon]?[mode] ?? .crosshair
     }
 
-    /// Cmd-dragging the selection cuts and moves its pixels (scissors); with Option it copies them.
+    /// Cmd-拖动选区会剪切并移动其像素（剪刀）；按住 Option 则复制它们。
     private func pixelDragCursor(duplicate: Bool) -> NSCursor { duplicate ? Self.duplicateCursor : Self.movePixelsCursor }
 
-    /// Re-applies the lasso cursor now if the pointer is over the canvas.
+    /// 若指针位于画布上，立即重新设置套索光标。
     private func refreshLassoCursor(_ flags: NSEvent.ModifierFlags = NSEvent.modifierFlags) {
         guard session.document != nil else { return }
         window?.invalidateCursorRects(for: self)
@@ -846,7 +840,7 @@ final class CanvasView: NSView {
     override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); syncGeometry() }
 
     private func syncGeometry() {
-        // Defer observable mutations until after SwiftUI's layout pass.
+        // 将可观察的变更延后到 SwiftUI 的 layout pass 之后执行。
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             let scale = self.convertToBacking(CGSize(width: 1, height: 1)).width
@@ -859,7 +853,7 @@ final class CanvasView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        // The grid and a text frame being dragged follow the pixels under them.
+        // 网格和正在拖动的文字框跟随其下方的像素。
         if lines.frame != bounds { lines.frame = bounds }
         lines.needsDisplay = true
         if drawOnGPU(dirtyRect) { return }
@@ -882,7 +876,7 @@ final class CanvasView: NSView {
         context.clip(to: rect.intersection(dirtyRect))
         context.setFillColor(NSColor(white: 0.30, alpha: 1).cgColor)
         context.fill(rect)
-        // Work scales with the visible viewport, not document dimensions.
+        // 工作量随可见视口而非文档尺寸变化。
         let tile: CGFloat = 10
         let visible = rect.intersection(bounds).intersection(dirtyRect)
         if !visible.isNull, !visible.isEmpty {
@@ -901,8 +895,8 @@ final class CanvasView: NSView {
         if session.viewport.zoom >= Self.crispZoom, !visible.isNull, !visible.isEmpty {
             drawDocumentPixels(covering: visible, clippedTo: pixels, document: document, in: context)
         } else {
-            // Draw native-resolution assets into the same document/view mapping as navigation.
-            // The AppKit view is flipped; flip each image locally so its top stays at the top.
+            // 将原生分辨率的素材绘制在与导航相同的文档/视图映射中。
+            // AppKit 视图是翻转的；在本地翻转每张图像，使其顶部始终保持在上。
             context.beginTransparencyLayer(auxiliaryInfo: nil)
             drawLayers(document, scale: session.viewport.pointsPerPixel,
                        center: { self.session.viewport.viewPoint(from: $0, documentSize: document.size) }, in: context)
@@ -914,20 +908,19 @@ final class CanvasView: NSView {
         context.stroke(rect)
     }
 
-    /// From 200% (2 screen pixels per document pixel) the canvas shows hard-edged
-    /// document pixels, as Photoshop does; the pixel grid appears from 800%.
+    /// 从 200%（每个文档像素对应 2 个屏幕像素）起，画布显示硬边的文档像素，与 Photoshop 一致；像素网格从 800% 起显示。
     static let crispZoom: CGFloat = 2
     static let pixelGridZoom: CGFloat = 8
 
-    /// A copy of a layer image sized for how large it lands in `context` (`drawnWidth` in the context's units),
-    /// from the shared cache of sharp halvings. Core Graphics resamples the whole source on every draw — a
-    /// 4000 px layer costs ~24 ms per frame even when only a small patch is dirty — and blurs big reductions.
+    /// 图层图像的副本，尺寸按其在 `context`（`drawnWidth` 以 context 单位计）中的最终大小调整，
+    /// 取自共享的清晰缩减缓存。Core Graphics 每次绘制都会重采样整个源图像——一个 4000 px 的图层
+    /// 每帧约耗 24 ms，即便只有一小块区域脏了也不例外——并且在大比例缩小时还会模糊。
     private func displayImage(_ image: CGImage, width drawnWidth: CGFloat, in context: CGContext) -> CGImage {
         DownsampleCache.shared.image(image, drawnAt: drawnWidth * LayerRenderer.deviceScale(of: context) / CGFloat(max(1, image.width)))
     }
 
-    /// The mask as Photoshop shows it after an Option-click: grayscale across the whole canvas, white revealing and
-    /// black hiding, with what a stroke has painted into it so far. Past its pixels, a mask is its edge tone.
+    /// Option-点击后 Photoshop 显示的蒙版样式：覆盖整个画布的灰度图，白色显示、黑色隐藏，
+    /// 并显示目前笔触已绘制到蒙版中的内容。超出蒙版像素范围的部分显示为蒙版的边缘色调。
     private func drawMaskAlone(_ mask: LayerMask, of layer: ImageLayer, document: CanvasDocument, scale: CGFloat,
                                center: (CGPoint) -> CGPoint, in context: CGContext) {
         let origin = center(.zero)
@@ -940,14 +933,13 @@ final class CanvasView: NSView {
                 pixelHeight: stroke.height, paintingMask: false, sourceRect: stroke.sourceRect, in: context)
             return
         }
-        // Where it shows while a transform is being dragged, as in the composite.
+        // 拖动变换时蒙版的显示位置，与合成时一致。
         let placed = session.displayedMaskPlacement(for: layer) ?? session.displayedTransform(for: layer)
         LayerRenderer.draw(mask.asset.image, transform: placed, center: center(placed.center), scale: scale, in: context)
     }
 
     private func drawLayers(_ document: CanvasDocument, scale: CGFloat, center: @escaping (CGPoint) -> CGPoint, in context: CGContext, onSurface: Bool = false) {
-        // Pixels being moved, or a gradient: the tiles drawn below follow the drag only once something reads them (see
-        // PixelMove and GradientEdit).
+        // 正在移动的像素或渐变：下方绘制的瓦片只有在被读取时才会跟随拖动（见 `PixelMove` 与 `GradientEdit`）。
         if let move = session.pixelMove {
             do { try move.applyOffset() } catch {
                 let message = error.localizedDescription
@@ -972,8 +964,7 @@ final class CanvasView: NSView {
         }
         handOffTextEffects(document)
         session.effectsPreviews.prepare(layers: document.layers)
-        // Color Burn and Color Dodge are blended by hand against the pixels under them, which needs a surface to
-        // read back (see SeparableBlend).
+        // Color Burn 与 Color Dodge 需要手动将其与下方的像素进行混合，这就需要一个 surface 来回读像素（见 `SeparableBlend`）。
         if !onSurface, document.layers.contains(where: { $0.adjustment != nil
             || SeparableBlend.needsSurface(session.displayedBlendMode(for: $0)) }) {
             let visible = document.effectiveVisibleIDs
@@ -994,7 +985,7 @@ final class CanvasView: NSView {
                     opacity: layer.effectiveOpacity(in: byID), blendMode: blendMode(of: layer), mask: nil, in: context)
                 return
             }
-            // A folder the layer sits in dims it along with everything else inside (see LayerOpacity).
+            // 图层所在的文件夹会按其不透明度一并作用于该图层及内部所有图层（见 `LayerOpacity`）。
             let opacity = layer.effectiveOpacity(in: byID)
             let mode = session.displayedBlendMode(for: layer)
             if SeparableBlend.needsSurface(mode), normalBlendLayerID != id {
@@ -1005,7 +996,7 @@ final class CanvasView: NSView {
             let stroke = session.brushStroke?.layer.id == layer.id ? session.brushStroke
                 : session.gradientEdit?.raster.layer.id == layer.id ? session.gradientEdit?.raster
                 : session.pixelMove?.raster.layer.id == layer.id ? session.pixelMove?.raster : nil
-            // An empty layer has nothing to draw, unless a filter (Vignette) is previewing pixels onto it.
+            // 空图层无内容可绘，除非滤镜（如 Vignette）正在其上预览像素。
             guard layer.asset != nil || stroke != nil || session.filterEdit?.previewImage(for: layer.id) != nil else { return }
             // Smudge or Liquify in progress: the layer as the stroke has reshaped it so far, across the canvas.
             if let warp = session.warpStroke, warp.layer.id == layer.id, let image = warp.image {
@@ -1022,7 +1013,7 @@ final class CanvasView: NSView {
             if stroke == nil, layer.effects?.visible.isEmpty == false,
                let edit = session.transformEdit, !edit.mask, edit.corners != nil,
                let effects = session.effectsPreviews.preview(for: layer,
-                    // A mask on its own placement, resampled into the layer's grid as the layer draws it.
+                    // 独立放置的蒙版，在图层绘制时被重采样到图层的网格中。
                     mask: layer.mask?.clipImage(placement: session.displayedMaskPlacement(for: layer), over: layer.transform,
                         width: layer.asset?.image.width ?? Int(layer.size.width.rounded()),
                         height: layer.asset?.image.height ?? Int(layer.size.height.rounded()), limit: 2048),
@@ -1039,13 +1030,13 @@ final class CanvasView: NSView {
                     mask: distorted.mask, in: context)
                 return
             }
-            // A mask stroke paints the mask's grid; the layer itself stays put.
-            // A mask on its own placement paints in its own grid and draws the layer where it is; any other stroke's grid,
-            // grown past the layer, is where the brush paints.
+            // 蒙版笔触在蒙版自身的网格上绘制；图层本身保持不动。
+            // 独立放置的蒙版在自身的网格上绘制，并在图层所在位置绘制图层；其他笔触的网格
+            // 若超出图层，则在超出区域继续绘制笔触内容。
             let transform = (stroke?.isMask == true && stroke?.layer.mask?.placement != nil ? nil : stroke?.paintTransform)
                 ?? session.displayedTransform(for: layer)
-            // A mask placed apart from its layer is resampled into the grid the layer draws in (at most 2048 pixels
-            // across while something moves, else about the size it's drawn).
+            // 与图层分离放置的蒙版，会被重采样到图层绘制所用的网格中（移动过程中最多 2048 像素，
+            // 其他情况下约为绘制尺寸）。
             let mask: CGImage? = {
                 guard let owned = layer.mask else { return nil }
                 if let distorted = session.maskDistortPreview(for: layer) { return distorted }
@@ -1059,13 +1050,13 @@ final class CanvasView: NSView {
                     height: owner.asset?.image.height ?? Int(base.size.height.rounded()),
                     limit: session.transformEdit != nil ? min(2048, steady) : steady)
             }()
-            // A stroke or drop shadow is drawn around the layer's pixels, on a canvas grown to hold it.
+            // 笔触或投影围绕图层像素绘制，画布会扩展到足以容纳它。
             if stroke == nil, layer.asset != nil,
                let effects = session.effectsPreviews.preview(for: layer, mask: mask, transform: transform,
                     maskPlacement: session.displayedMaskPlacement(for: layer), completion: { [weak self] in
                         self?.needsDisplay = true
                     }) {
-                // A seeded preview carries the place it belongs; everything else is the layer's box plus its margin.
+                // 播种的预览会自带其所属位置；其他情况则为图层框加上其外边距。
                 let grown = effects.placement ?? LayerEffectsRenderer.placed(transform, image: effects.image, inset: effects.inset)
                 LayerRenderer.draw(effects.image, transform: grown, center: center(grown.center), scale: scale,
                     opacity: opacity, blendMode: blendMode(of: layer), mask: nil, in: context)
@@ -1075,10 +1066,9 @@ final class CanvasView: NSView {
                 LayerRenderer.draw(shaped, transform: transform, center: center(transform.center), scale: scale,
                     opacity: opacity, blendMode: blendMode(of: layer), mask: mask, in: context)
             } else if let stroke, !stroke.isMask {
-                // The effects follow the paint: a surface kept at full resolution, redone only where the brush has
-                // just been (see LayerEffectsSurface). It already holds the wet pixels with the effects over them —
-                // a color overlay and an inner shadow go over the layer, so drawing the paint again on top of it
-                // would cover them — so nothing more is drawn for this layer.
+                // 效果跟随绘制：一个保持全分辨率的 surface，仅在笔刷刚扫过的区域重做（见 `LayerEffectsSurface`）。
+                // 它已持有湿润像素及其上的效果——颜色叠加和内阴影位于图层之上，
+                // 再在其上绘制一遍绘制内容会盖住它们——因此本图层不再绘制其他内容。
                 if let surface = strokeSurface(layer: layer, stroke: stroke, mask: mask), let built = surface.image {
                     let grown = LayerEffectsRenderer.placed(transform, image: built, inset: surface.margin)
                     surface.placement = grown
@@ -1092,8 +1082,8 @@ final class CanvasView: NSView {
                     LayerRenderer.draw(effects.image, transform: grown, center: center(grown.center), scale: scale,
                         opacity: opacity, blendMode: blendMode(of: layer), mask: nil, in: context)
                 }
-                // Painting pixels previews exactly as the finished layer will look, with the layer's own
-                // sampling, so nothing shifts when a stroke starts or ends (see TiledLayerRenderer).
+                // 像素预览与最终图层完全一致，使用图层自身的采样，
+                // 这样笔触起止时不会出现位置偏移（见 `TiledLayerRenderer`）。
                 let previous = stroke.layer.asset
                 TiledLayerRenderer.drawStroke(width: stroke.width, height: stroke.height, sourceRect: stroke.sourceRect,
                     patches: stroke.patches, image: previous?.raster == nil ? previous?.image : nil, raster: previous?.raster,
@@ -1101,8 +1091,8 @@ final class CanvasView: NSView {
                     opacity: opacity, blendMode: blendMode(of: layer),
                     mask: mask, in: context)
             } else if let stroke, let placement = stroke.layer.mask?.placement {
-                // A mask on its own placement is painted in its own grid: the layer draws through the mask as the
-                // stroke leaves it, resampled into the layer's grid.
+                // 独立放置的蒙版在其自身网格上绘制：图层通过笔触留下的蒙版显示，
+                // 该蒙版被重采样到图层的网格。
                 let preview = stroke.placedMaskPreview(placement: stroke.paintTransform)
                 // With effects on, they're redone as the mask changes, from the mask as it's being left.
                 if let preview, let surface = placedMaskSurface(layer: layer, stroke: stroke, placement: placement, preview: preview),
@@ -1121,7 +1111,7 @@ final class CanvasView: NSView {
                         opacity: opacity, blendMode: blendMode(of: layer), mask: preview, in: context)
                 }
             } else if let stroke {
-                // With effects on, the surface redoes them as the mask changes, so they stay on while it's painted.
+                // 启用效果时，surface 会随蒙版变化而重做效果，使其在绘制过程中始终保持显示。
                 if let surface = strokeSurface(layer: layer, stroke: stroke, mask: nil), let built = surface.image {
                     let grown = LayerEffectsRenderer.placed(transform, image: built, inset: surface.margin)
                     surface.placement = grown
@@ -1129,7 +1119,7 @@ final class CanvasView: NSView {
                         opacity: opacity, blendMode: blendMode(of: layer), mask: nil, in: context)
                     return
                 }
-                // Painting the mask shows the layer through the mask as it will be once committed, the same way.
+                // 绘制蒙版时，按提交后图层透过蒙版显示的效果进行预览，与上面一致。
                 let previous = stroke.layer.asset
                 TiledLayerRenderer.drawMaskStroke(width: stroke.width, height: stroke.height, sourceRect: stroke.sourceRect,
                     patches: stroke.patches, oldMask: stroke.layer.mask?.asset,
@@ -1141,23 +1131,22 @@ final class CanvasView: NSView {
                     opacity: opacity, blendMode: blendMode(of: layer),
                     mask: mask, in: context)
             } else if let image = session.filterEdit?.previewImage(for: layer.id) ?? session.levels?.previewImage(for: layer.id) ?? session.hueSaturation?.previewImage(for: layer.id) ?? layer.asset?.image {
-                // LayerRenderer picks a sharp reduction for the image and its mask itself.
+                // LayerRenderer 会自行选择图像及其蒙版的清晰缩减版本。
                 LayerRenderer.draw(image, transform: transform,
                     center: center(transform.center), scale: scale,
                     opacity: opacity, blendMode: blendMode(of: layer),
                     mask: mask, in: context)
             }
         }
-        // The shape being dragged out previews where its layer will go — above the active layer — rather than over
-        // everything, so the layers above it cover it as they will once it is made.
+        // 正在拖出的形状预览其图层将放置的位置——位于当前图层之上——而非覆盖所有内容，
+        // 这样上方的图层在形状创建后会按预期盖住它。
         func drawOwnWithDraft(_ id: UUID, _ context: CGContext) {
             drawOwn(id, context)
             guard id == session.activeLayerID else { return }
             drawShapeDraft(scale: scale, center: center, in: context)
             drawNewText(context)
         }
-        // New text goes where its layer will: just above the active layer, or on top when that isn't drawn (a
-        // folder, a hidden layer, or none).
+        // 新文字放在其图层将位于的位置：当前图层正上方，或在该图层未绘制时（文件夹、隐藏图层或无图层）置于最上层。
         var drewNewText = false
         func drawNewText(_ context: CGContext) {
             guard !drewNewText, session.textDraft?.layerID == nil, let text = draftText else { return }
@@ -1167,7 +1156,7 @@ final class CanvasView: NSView {
         let live = LiveMaskRenderer(bounds: context.boundingBoxOfClipPath, source: { byID[$0]?.maskSourceID }, drawOwn: drawOwnWithDraft)
         live.adjustment = { byID[$0]?.adjustment }
         live.adjustmentOpacity = { byID[$0]?.effectiveOpacity(in: byID) ?? 1 }
-        // Adjustments run on the surface's pixels, one per screen pixel (see AdjustmentSurface).
+        // 调整作用于 surface 的像素，每屏幕像素对应一次（见 `AdjustmentSurface`）。
         live.adjustmentScale = scale * LayerRenderer.deviceScale(of: context)
         live.resolution = LayerRenderer.deviceScale(of: context)
         let corner = center(.zero)
@@ -1177,8 +1166,8 @@ final class CanvasView: NSView {
         let area = context.boundingBoxOfClipPath
         live.adjustmentClip = { [weak self] id, ctx in
             guard let self, let layer = byID[id], layer.mask?.isEnabled == true else { return }
-            // Mid-stroke the mask exists only as the edit's tiles, so the adjustment is clipped by those, the same
-            // way a folder's mask is — otherwise the stroke would only appear once it was committed.
+            // 笔触进行中时，蒙版仅以编辑的瓦片形式存在，因此调整按这些瓦片进行裁剪，
+            // 与文件夹蒙版的处理方式相同——否则笔触要等到提交后才会显示。
             if let edit = self.liveMaskEdit(for: id),
                let clip = self.liveFolderMaskClip(edit, area: area, scale: scale, center: center, in: ctx) {
                 clip(ctx)
@@ -1203,13 +1192,13 @@ final class CanvasView: NSView {
         drawNewText(context)
     }
 
-    /// Text being edited, as it shows among the layers: as it will be committed, with its effects around it. They stay
-    /// on while it's edited, redone from the text as typed — and until a change has been redone, the last effects
-    /// stand in under the new text rather than blinking off.
+    /// 正在编辑的文字在图层间的显示方式：按提交后的样子，连同其周围的效果一起显示。
+    /// 编辑期间效果保持显示，根据实时输入的文字重做；在新效果完成重做之前，
+    /// 上一次的效果会临时顶在新文字之下，不会闪烁消失。
     private func editedText(_ layer: ImageLayer) -> (image: CGImage, transform: LayerTransform)? {
         guard let text = draftText else { return nil }
         guard let effects = layer.effects?.visible, !effects.isEmpty, effects.isValid else { return text }
-        // Redone only when the text's pixels, its place or its effects change.
+        // 仅在文字像素、位置或效果发生变化时才重做。
         if draftEffects?.image !== text.image || draftEffects?.effects != effects || draftEffects?.transform != text.transform {
             let mask = layer.mask.flatMap { owned -> CGImage? in
                 guard let placement = owned.placement else { return owned.enabledImage }
@@ -1224,8 +1213,8 @@ final class CanvasView: NSView {
         return (built.rendered, LayerEffectsRenderer.placed(text.transform, image: built.rendered, inset: built.inset))
     }
 
-    /// Text editing just ended: if the layer now holds the text as it was last typed, its effects from the edit stand
-    /// in until they're rebuilt from the committed pixels, so they don't blink off for a frame.
+    /// 文字编辑刚结束：若图层此时持有的正是上次输入的文字，则编辑期间的效果先临时顶替，
+    /// 直至从已提交的像素重建完成，避免效果消失一帧。
     private func handOffTextEffects(_ document: CanvasDocument) {
         guard session.textDraft == nil, let built = draftEffects, let source = draftEffectsSource else { return }
         if document.layers.first(where: { $0.id == source.layerID })?.liveText?.style == source.style {
@@ -1236,9 +1225,9 @@ final class CanvasView: NSView {
         draftEffectsSource = nil
     }
 
-    /// The shape being dragged out with the Shape tool, drawn in the color it will be made in.
+    /// 使用形状工具拖出的形状，按其最终创建时的颜色绘制。
     private func drawShapeDraft(scale: CGFloat, center: (CGPoint) -> CGPoint, in context: CGContext) {
-        // A flat or upright line has a box with no height or width, which is not "empty" for this purpose.
+        // 水平或竖直线段对应的框没有高度或宽度，因此在本检查中不算"空"。
         guard let draft = session.shapeDraft,
               draft.kind == .line ? (draft.rect.width > 0 || draft.rect.height > 0) : !draft.rect.isEmpty else { return }
         let middle = center(CGPoint(x: draft.rect.midX, y: draft.rect.midY))
@@ -1252,7 +1241,7 @@ final class CanvasView: NSView {
             context.setStrokeColor(session.foregroundColor.nsColor.cgColor)
             context.setLineWidth(thickness)
             context.setLineCap(.round)
-            // Exactly the two points being dragged between, so the start never shifts.
+            // 严格使用拖动中的两个端点，因此起点不会偏移。
             context.move(to: center(ends.start))
             context.addLine(to: center(ends.end))
             context.strokePath()
@@ -1263,11 +1252,11 @@ final class CanvasView: NSView {
         context.restoreGState()
     }
 
-    /// The effects surface for the layer being painted, made when the stroke starts and updated as it goes.
+    /// 正在绘制图层的效果 surface，在笔触开始时创建，并随笔触进行而更新。
     private var strokeSurface: LayerEffectsSurface?
-    /// Where the GPU draws the canvas, under the overlays (see `drawOnGPU`).
+    /// GPU 在叠加层之下绘制画布的位置（见 `drawOnGPU`）。
     var gpuView: MetalCanvasView?
-    /// Off, every frame is drawn with Core Graphics.
+    /// 关闭时，每一帧都使用 Core Graphics 绘制。
     var allowsGPU = true
     private var snapshotting = false
     override func cacheDisplay(in rect: NSRect, to bitmapImageRep: NSBitmapImageRep) {
@@ -1283,8 +1272,7 @@ final class CanvasView: NSView {
         }
         guard let surface = strokeSurface else { return nil }
         if stroke.isMask {
-            // The mask as the stroke leaves it, over a region of the grid: beyond the old mask an edit reveals, as it
-            // does once committed.
+            // 笔触留下的蒙版，覆盖网格的某个区域：在原蒙版之外的编辑会显示出来，提交后亦如此。
             let old = stroke.layer.mask?.asset.image, patches = stroke.patches, sourceRect = stroke.sourceRect, background = stroke.maskBackground
             surface.update(base: stroke.layer.asset?.image, patches: [], mask: nil, maskStroke: .init(patches: patches, toGrid: .identity) { region in
                 guard let coverage = try? BrushRaster.context(width: Int(region.width), height: Int(region.height), mask: true) else { return nil }
@@ -1303,8 +1291,8 @@ final class CanvasView: NSView {
         return surface
     }
 
-    /// The effects surface for a mask on its own placement being painted. Its stroke paints in the mask's grid; the
-    /// surface stays in the layer's, and takes the mask from `preview`, the stroke's mask resampled into that grid.
+    /// 独立放置的蒙版正在绘制时的效果 surface。其笔触绘制于蒙版自身的网格；
+    /// surface 保留在图层网格中，从 `preview`（即重采样到该网格的笔触蒙版）取蒙版。
     private func placedMaskSurface(layer: ImageLayer, stroke: BrushStroke, placement: LayerTransform, preview: CGImage) -> LayerEffectsSurface? {
         guard let effects = layer.effects?.visible, !effects.isEmpty, effects.isValid, let base = stroke.layer.asset?.image else { return nil }
         let grid = CGSize(width: base.width, height: base.height)
@@ -1329,14 +1317,13 @@ final class CanvasView: NSView {
         return surface
     }
 
-    /// The raster edit painting this folder's mask, if one is in progress.
+    /// 正在为该文件夹蒙版绘制的栅格编辑（若有）。
     private func liveMaskEdit(for id: UUID) -> BrushStroke? {
         [session.brushStroke, session.gradientEdit?.raster].compactMap { $0 }.first { $0.layer.id == id && $0.isMask }
     }
 
-    /// While a folder's mask is being painted it exists only as the edit's tiles, so the clip
-    /// for the layers inside is rendered from those tiles — just for the area being redrawn,
-    /// at the context's device resolution — the same way a layer's own mask is previewed.
+    /// 绘制文件夹蒙版时，蒙版仅以编辑的瓦片形式存在，因此内部图层的裁剪由这些瓦片渲染而来——
+    /// 仅针对正在重绘的区域、按 context 的设备分辨率——与图层自身蒙版的预览方式相同。
     private func liveFolderMaskClip(_ edit: BrushStroke, area: CGRect, scale: CGFloat,
                                     center: (CGPoint) -> CGPoint, in context: CGContext) -> ((CGContext) -> Void)? {
         let rect = area.integral
@@ -1345,7 +1332,7 @@ final class CanvasView: NSView {
         let width = Int(abs(device.width).rounded(.up)), height = Int(abs(device.height).rounded(.up))
         guard width >= 1, height >= 1, width * height <= 64_000_000,
               let coverage = try? BrushRaster.context(width: width, height: height, mask: true) else { return nil }
-        // Outside the folder's mask bounds is hidden, as it is for a committed mask.
+        // 文件夹蒙版范围之外的区域被隐藏，与已提交的蒙版一致。
         coverage.setFillColor(gray: 0, alpha: 1)
         coverage.fill(CGRect(x: 0, y: 0, width: width, height: height))
         coverage.scaleBy(x: CGFloat(width) / rect.width, y: CGFloat(height) / rect.height)
@@ -1360,7 +1347,7 @@ final class CanvasView: NSView {
             rasterBase: base?.raster.flatMap { raster in raster.base.map { displayImage($0, width: transform.size.width * scale * raster.baseRect.width / CGFloat(max(1, raster.width)), in: coverage) } }, in: coverage)
         guard let image = coverage.makeImage() else { return nil }
         return { target in
-            // CGImage rows run top-down; image clipping runs bottom-up in this flipped space.
+            // CGImage 的行从上到下排列；在此翻转坐标空间中，图像裁剪则从下到上进行。
             target.translateBy(x: 0, y: rect.minY * 2 + rect.height)
             target.scaleBy(x: 1, y: -1)
             target.clip(to: rect, mask: image)
@@ -1369,9 +1356,8 @@ final class CanvasView: NSView {
         }
     }
 
-    /// Composites just the visible document pixels at 1:1 (the same rendering as export),
-    /// then enlarges them without smoothing so each document pixel is a crisp square,
-    /// even for scaled or rotated layers. Cost is proportional to what is on screen.
+    /// 仅按 1:1 合成可见的文档像素（与导出时的渲染一致），然后无平滑地放大，
+    /// 使每个文档像素都呈现为清晰的方块，即便图层经过缩放或旋转亦如此。开销与屏幕显示内容成正比。
     private func drawDocumentPixels(covering view: CGRect, clippedTo pixels: CGRect, document: CanvasDocument, in context: CGContext) {
         let viewport = session.viewport
         let topLeft = viewport.documentPoint(from: view.origin, documentSize: document.size)
@@ -1394,7 +1380,7 @@ final class CanvasView: NSView {
         context.restoreGState()
     }
 
-    /// What the lines overlay draws: the pixel grid, from 800%, and the frame of new text being dragged out.
+    /// 线条叠加层绘制的内容：800% 起的像素网格，以及正在拖出的新文字框。
     private func drawLines(in dirtyRect: NSRect) {
         guard let document = session.document, let context = NSGraphicsContext.current?.cgContext else { return }
         if session.showsPixelGrid, session.viewport.zoom >= Self.pixelGridZoom {
@@ -1408,7 +1394,7 @@ final class CanvasView: NSView {
         drawTextBoxDraft()
     }
 
-    /// One-screen-pixel lines on document pixel boundaries, over the image only.
+    /// 一屏幕像素宽的线条，仅绘制在图像之上、对应文档像素边界处。
     private func drawPixelGrid(in view: CGRect, document: CanvasDocument, context: CGContext) {
         let viewport = session.viewport
         let canvas = CGRect(origin: viewport.viewPoint(from: .zero, documentSize: document.size),
@@ -1435,7 +1421,7 @@ final class CanvasView: NSView {
         context.restoreGState()
     }
 
-    /// Puts the current tool's cursor back after picking, the way the cursor rects would on entering the canvas.
+    /// 取样结束后恢复当前工具的光标，效果与光标矩形在进入画布时设置光标一致。
     private func restoreToolCursor() {
         if session.hueTargeting { NSCursor.resizeLeftRight.set() }
         else if session.tool.isSelectionTool, !spaceHeld { lassoCursor.set() }
@@ -1443,10 +1429,10 @@ final class CanvasView: NSView {
         else { toolCursor.set() }
     }
 
-    /// The current tool's cursor over the canvas, with nothing being picked or dragged.
+    /// 画布上当前工具的光标，前提是既不在取样也不在拖动。
     private var toolCursor: NSCursor {
         spaceHeld || session.tool == .hand ? .openHand
-            // The Move tool's cursor depends on the pointer (handles, Option to duplicate), so match it here.
+            // 移动工具的光标取决于指针位置（控制点、Option 复制等），因此在此按指针设置。
             : session.tool == .move ? window.map { transformCursor(at: convert($0.mouseLocationOutsideOfEventStream, from: nil)) } ?? .arrow
             : session.tool == .type ? .iBeam
             : session.tool == .idle ? .arrow
@@ -1464,8 +1450,8 @@ final class CanvasView: NSView {
         }
         if session.hueTargeting { addCursorRect(bounds, cursor: .resizeLeftRight); return }
         if session.tool.isSelectionTool, !spaceHeld { addCursorRect(bounds, cursor: lassoCursor); return }
-        // Clone Stamp with a source: the brush circle, its preview and the source crosshair stand in
-        // for the cursor. Holding Option to pick a new source brings the crosshair back.
+        // 仿制图章有源点时：笔刷圆圈、其预览以及源点十字准星代替光标。
+        // 按住 Option 选取新源点时，恢复十字准星显示。
         if session.tool == .cloneStamp, session.cloneSource != nil, !optionHeld, !spaceHeld {
             addCursorRect(bounds, cursor: Self.hiddenCursor)
             return
@@ -1485,9 +1471,9 @@ final class CanvasView: NSView {
         if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
         hoverTrackingArea = nil
         guard session.document != nil else { return }
-        // Every tool hears the mouse leave, so its cursor never follows it out of the canvas;
-        // only tools whose cursor depends on where the pointer is also track movement.
-        // The picker panel stays key, so sampling must track while this window is not.
+        // 所有工具都会收到 mouse-leave 事件，使其光标不会跟随鼠标移出画布；
+        // 仅光标依赖指针位置的工具才额外监听 mouseMoved。
+        // 取色面板仍保持为 key window，因此即使本窗口非 key 也需继续追踪取样。
         var options: NSTrackingArea.Options = [.mouseEnteredAndExited, picking ? .activeAlways : .activeInKeyWindow, .inVisibleRect]
         if picking || session.tool == .move || session.tool.isBrushTool || session.tool.isSelectionTool {
             options.formUnion([.mouseMoved, .cursorUpdate])

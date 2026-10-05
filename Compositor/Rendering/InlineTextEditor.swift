@@ -1,10 +1,10 @@
 import AppKit
 
-/// A native text system on the canvas: selection, marked text/IME, clipboard and local undo
-/// stay with NSTextView. Its logical bounds are layer pixels; the containing view supplies zoom.
-/// Its glyphs are clear: the canvas draws the text as the layer's own pixels underneath, as Photoshop does, so
-/// what is typed looks the same at any zoom as it will once it is committed.
-/// Draws text selections translucent, focused or not.
+/// 画布上的原生文本系统：选区、marked text / IME、剪贴板以及局部撤销都由 NSTextView 处理。
+/// 其逻辑边界为图层像素；缩放由其所属视图提供。
+/// 其字形清晰可见：画布在底层把文本绘制为图层自身的像素，正如 Photoshop 的做法，
+/// 因此键入的文本在任何缩放下都与提交后所见一致。
+/// 文本选区以半透明方式绘制，无论是否处于焦点状态。
 private final class SeeThroughSelectionLayout: NSLayoutManager {
     override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
                                           forCharacterRange charRange: NSRange, color: NSColor) {
@@ -16,16 +16,15 @@ private final class SeeThroughSelectionLayout: NSLayoutManager {
 final class CanvasTextView: NSTextView {
     weak var editor: InlineTextEditor?
     private let textUndo = UndoManager()
-    /// Set when the font menu takes the focus, so a collapsed caret does not replace the letters that were selected.
+    /// 当字体菜单夺取焦点时设置，以防折叠的插入符替换原本已选中的字符。
     var holdsSelection = false
     override var undoManager: UndoManager? { textUndo }
-    // Undo and Redo reach the window, whose history isn't this one, so the text answers them itself: ⌘Z takes back
-    // what was typed since the text box opened, in one step, as in Figma.
+    // 撤销与重做会指向窗口，而窗口的历史栈并非此处所有，因此文本自行处理：
+    // ⌘Z 一次性撤销自文本框打开以来键入的全部内容，如同 Figma 的行为。
     @objc func undo(_ sender: Any?) { if textUndo.canUndo { textUndo.undo() } }
     @objc func redo(_ sender: Any?) { if textUndo.canRedo { textUndo.redo() } }
     override func resignFirstResponder() -> Bool {
-        // The font menu takes the focus and can collapse the highlight. The letters stay selected, so the face
-        // applies to them.
+        // 字体菜单夺取焦点时可能令高亮消失。字母保持选中状态，这样字体设置便会作用于它们。
         let range = selectedRange()
         let resigned = super.resignFirstResponder()
         if range.length > 0 {
@@ -41,15 +40,15 @@ final class CanvasTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         guard let event = ShortcutSettings.shared.textEvent(event) else { return }
         if event.keyCode == 53 { editor?.canvas?.session.cancelText(); return }
-        // Option with the arrows sets spacing, as in Photoshop: left and right the tracking, up and down the
-        // leading. Shift makes each step ten.
+        // Option 与方向键组合可调整间距，仿 Photoshop 的行为：左右调整字距（tracking），上下调整行距（leading）。
+        // 按住 Shift 时每步放大十倍。
         if event.modifierFlags.contains(.option), [123, 124, 125, 126].contains(event.keyCode),
            let session = editor?.canvas?.session {
             let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
             switch event.keyCode {
             case 123: session.changeTextStyle { $0.tracking -= step }
             case 124: session.changeTextStyle { $0.tracking += step }
-            // Up closes the lines up, down opens them out, counting from whatever Auto works out to.
+            // 上箭头收紧行距，下箭头拉开行距，以「自动」计算出的当前值为基准。
             case 126: session.changeTextStyle { $0.leading = max(1, $0.lineHeight - step) }
             default: session.changeTextStyle { $0.leading = $0.lineHeight + step }
             }
@@ -61,12 +60,12 @@ final class CanvasTextView: NSTextView {
         }
         holdsSelection = false
         super.keyDown(with: event)
-        // Text views hide the pointer while typing; on the canvas it stays, so you can see where you'll click next.
+        // 文本视图在键入时隐藏指针；画布上保持指针可见，以便知道下一次将点击的位置。
         NSCursor.setHiddenUntilMouseMoves(false)
     }
     override func mouseExited(with event: NSEvent) { NSCursor.setHiddenUntilMouseMoves(false) }
     override func paste(_ sender: Any?) { pasteAsPlainText(sender) }
-    // The editor sets the cursor for the whole box — the I-beam over the text, resize arrows over the edges.
+    // 编辑器为整个文本框设置光标——文本之上为 I 形，边缘之上为缩放箭头。
     override func resetCursorRects() {}
 }
 
@@ -75,7 +74,7 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
     let textView = CanvasTextView(frame: .zero)
     fileprivate var draftID: UUID?
     private var shownStyle: LayerTextStyle?
-    /// The style after an edit NSTextView has accepted but not yet made, with its color and font runs moved to fit.
+    /// NSTextView 已接受但尚未落实的样式，颜色与字体 run 已相应移动以匹配。
     private var pendingStyle: LayerTextStyle?
     private var synchronizing = false
     private var logicalSize = CGSize(width: 360, height: 160)
@@ -91,8 +90,8 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
     private var measuredStyle: LayerTextStyle?
     private var measuredSize: CGSize = .zero
     private var resize: (handle: Int, draft: TextDraft, transform: LayerTransform, start: CGPoint)?
-    /// The transform the editor is actually showing. Point text grows as it is typed, so this is not always the
-    /// draft's own transform, and a resize has to start from what is on screen or the text jumps.
+    /// 编辑器当前实际显示的变换。点文本随键入而增长，因此不一定是草稿自身的变换，
+    /// 调整大小必须从屏幕上所见开始，否则文本会跳动。
     override var isFlipped: Bool { true }
 
     init(canvas: CanvasView) {
@@ -112,20 +111,20 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         textView.textContainer?.heightTracksTextView = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        // The selection shows through to the text the canvas draws beneath it, also while another window (the color
-        // picker previewing the selected letters) has focus, where AppKit would otherwise paint it solid gray.
+        // 选区透出至画布在其下方绘制的文本——即使在另一窗口（颜色拾取器预览所选字符）取得焦点时也是如此，
+        // 否则 AppKit 会将其涂成实心灰色。
         textView.selectedTextAttributes = [.backgroundColor: NSColor.selectedTextBackgroundColor.withAlphaComponent(0.45)]
         textView.textContainer?.replaceLayoutManager(SeeThroughSelectionLayout())
         textView.setAccessibilityLabel(L10n.string("Canvas text"))
-        // Both backed by layers from the start. Left to AppKit, the text surface's layer is first placed in the
-        // canvas's own layer tree and only moved inside this view a frame later; with a flipped layer, whose
-        // mirroring hangs off that placement, the move is visible as a jump.
+        // 二者从一开始就由 layer 支撑。若交给 AppKit，文本表面的 layer 会先放入画布自身的 layer 树，
+        // 一帧后才被移入本视图；而对于翻转的 layer，其镜像效果正依赖那次放置，
+        // 因此这次移动会表现为一次跳动。
         wantsLayer = true
         textView.wantsLayer = true
         textView.layer?.anchorPoint = .zero
         addSubview(textView)
         clipsToBounds = false
-        // Shown once it has been placed, so a flipped layer never appears for a frame at the unmirrored spot.
+        // 放置完成后再显示，避免翻转的 layer 在未镜像的位置出现一帧。
         isHidden = true
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -136,7 +135,7 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         draftID = draft.id
         let style = draft.style
         let layer = document.layers.first { $0.id == draft.layerID }
-        // Point text has no box: it is as big as what has been typed, growing as it is typed.
+        // 点文本没有文本框：其大小即为已键入内容的体积，并随键入而增长。
         if let boxSize = style.boxSize {
             logicalSize = boxSize
         } else {
@@ -147,11 +146,11 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
             logicalSize = measuredSize
         }
         var transform = draft.transform ?? LayerTransform(origin: draft.origin, size: logicalSize)
-        // Point text already on a layer grows as it is typed too, keeping whatever scale the layer was given.
+        // 已落在图层上的点文本同样随键入增长，保持图层原本所给的缩放。
         if style.boxSize == nil, draft.transform != nil, let asset = layer?.asset, asset.image.width > 0 {
             let factor = transform.size.width / CGFloat(asset.image.width)
-            // A rotated layer turns about its center, so growing it swings its corner away and the text drifts as it
-            // is typed. The top-left corner is put back where it was, which is where the commit leaves it too.
+            // 旋转的图层绕其中心旋转，因此放大图层会让角点偏离，文本随之漂移。
+            // 将左上角放回原位——提交后也保持在此位置。
             let anchor = transform.point(.zero)
             transform.size = CGSize(width: logicalSize.width * factor, height: logicalSize.height * factor)
             let moved = transform.point(.zero)
@@ -163,21 +162,21 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         let anchor = canvas.session.viewport.viewPoint(from: transform.point(.zero), documentSize: document.size)
         let geometry = Geometry(transform: transform, logicalSize: logicalSize, anchor: anchor, scale: scale)
         if fresh || shownGeometry != geometry {
-            // AppKit's frame rotation participates in both drawing and event-coordinate conversion.
+            // AppKit 的 frame 旋转同时参与绘制与事件坐标转换。
             frameRotation = 0
             frame = CGRect(origin: canvas.session.viewport.viewPoint(from: transform.point(.zero), documentSize: document.size),
                            size: CGSize(width: transform.size.width * scale, height: transform.size.height * scale))
             bounds = CGRect(origin: .zero, size: logicalSize)
-            // The canvas is flipped, so a positive frame rotation turns the editor clockwise on screen, the way a layer's
-            // own rotation is measured. Negating it turned the editor the opposite way from the text it is editing.
+            // 画布已翻转，正向的 frame 旋转让编辑器在屏幕上顺时针转动，与图层自身的旋转度量方向一致。
+            // 取负会让编辑器与所编辑的文本方向相反。
             frameRotation = transform.rotation
-            // Rotating a flipped NSView can move its logical origin. Keep the layer's top-left pinned.
+            // 旋转已翻转的 NSView 可能改变其逻辑原点。固定住图层的左上角。
             let actual = convert(CGPoint.zero, to: canvas)
             setFrameOrigin(CGPoint(x: frame.origin.x + anchor.x - actual.x, y: frame.origin.y + anchor.y - actual.y))
             let padding = LayerTextStyle.padding
             let textFrame = bounds.insetBy(dx: padding, dy: padding)
             if textView.frame != textFrame { textView.frame = textFrame }
-            // Mirroring belongs to the text surface, leaving resize handles in their logical order.
+            // 镜像属于文本表面，让缩放手柄保持其逻辑顺序。
             mirror = (transform.flipX, transform.flipY)
             applyMirror()
             handleSize = max(2, 6 / max(0.01, scale * transform.size.width / logicalSize.width))
@@ -217,7 +216,7 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
                 guard let self, self.canvas?.session.textDraft?.id == draft.id else { return }
                 if self.window?.firstResponder is NSText, self.window?.firstResponder !== self.textView { return }
                 self.window?.makeFirstResponder(self.textView)
-                // Opening existing text puts the cursor after it, ready to add to it, unless a click already placed it.
+                // 打开已有文本时把光标置于文本末尾，便于继续追加，除非此前已有点击放置过光标。
                 if draft.layerID != nil, self.textView.selectedRange() == NSRange(location: 0, length: 0) {
                     self.textView.setSelectedRange(NSRange(location: self.textView.string.utf16.count, length: 0))
                 }
@@ -233,13 +232,13 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         }
         pendingStyle = nil
         draft.style.content = textView.string
-        // Text NSTextView changed without saying how can't keep its colors and faces letter for letter.
+        // 文本 NSTextView 在未说明改动方式的情况下无法逐字符保留颜色与字体。
         if !draft.style.isValid { draft.style.colorRuns = nil; draft.style.fontRuns = nil }
         draft.selection = textView.selectedRange()
         shownStyle = draft.style
         session.textDraft = draft
-        // NSTextView draws the changed glyphs itself. Refresh the box's overflow marker
-        // without resetting the text container's geometry on every keystroke.
+        // NSTextView 自行绘制变更后的字形。刷新文本框的溢出标记，
+        // 但不要在每次按键时重置文本容器的几何信息。
         needsDisplay = true
     }
     func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
@@ -263,7 +262,7 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         if session.textDraft?.selection != selection { session.textDraft?.selection = selection }
         if let style = session.textDraft?.style { updateInsertionPointColor(style) }
     }
-    /// Puts back a selection a focus change wiped, so the font menu still edits those letters.
+    /// 恢复焦点切换时被清掉的选区，使字体菜单仍能作用于这些字符。
     func keepSelection(_ range: NSRange) {
         guard range.length > 0, let session = canvas?.session, session.textDraft?.id == draftID else { return }
         if session.textDraft?.selection != range { session.textDraft?.selection = range }
@@ -275,9 +274,9 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
     }
 
     private var handleTracking: NSTrackingArea?
-    /// Mirrors the text surface for a flipped layer, about the middle of the surface. A layer transform turns
-    /// about its anchor point, and AppKit sets that (and the layer's position) when it lays the view out, so this
-    /// runs again after every layout and once more before drawing.
+    /// 为翻转图层镜像文本表面，围绕表面中点进行。图层变换绕其 anchor point 旋转，
+    /// 而 AppKit 在布局该视图时会设置该点（以及 layer 的 position），
+    /// 因此每次布局后都要重新执行，并在绘制前再执行一次。
     private var mirror: (x: Bool, y: Bool) = (false, false)
     private func applyMirror() {
         guard let layer = textView.layer else { return }
@@ -288,8 +287,8 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
             if !layer.affineTransform().isIdentity { layer.setAffineTransform(.identity) }
             return
         }
-        // Placed by hand: until AppKit has laid this view out, the text surface's layer is still positioned in the
-        // canvas's coordinates, and mirroring about a layer that is somewhere else is a jump on the first frame.
+        // 手动放置：在 AppKit 完成本视图布局之前，文本表面的 layer 仍处于画布坐标系中，
+        // 围绕位于别处的 layer 做镜像会在第一帧出现一次跳动。
         layer.anchorPoint = .zero
         layer.bounds = CGRect(origin: .zero, size: textView.bounds.size)
         layer.position = textView.frame.origin
@@ -303,14 +302,13 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
     }
     override func viewWillDraw() {
         super.viewWillDraw()
-        // Attaching the text surface's layer into this view's layer tree clears its transform, and that happens
-        // after everything else: without this, a flipped layer's first frame is drawn unmirrored.
+        // 将文本表面的 layer 接入本视图的 layer 树会清除其变换，且这一步发生在其他一切之后：
+        // 缺少此调用，翻转 layer 的首帧会以未镜像的状态绘制。
         applyMirror()
     }
 
-    /// The cursor follows the same test the mouse does: arrows over the edges and corners, the I-beam over the
-    /// text. Cursor rects are no use here — the box can be rotated, and AppKit does not map them through a
-    /// view's rotation — so this view watches the pointer itself.
+    /// 光标遵循与鼠标相同的判定：边缘与角点之上为缩放箭头，文本之上为 I 形。
+    /// 光标矩形在此无济于事——文本框可能旋转，而 AppKit 不会将光标矩形映射经过视图的旋转——因此本视图自行监听指针。
     private var cursorTracking: NSTrackingArea?
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -335,10 +333,9 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         handleCursor(index).set()
     }
 
-    /// Every mouse move while the box is open, wherever the pointer is. Tracking areas stop arriving once the text
-    /// surface has the mouse, which left the cursor stuck on whatever it was last set to. Inside the box it's the
-    /// I-beam or a resize arrow; over the rest of the canvas, the Type tool's I-beam; leaving the canvas, the arrow,
-    /// set once on the way out so the toolbar's own controls keep their cursors.
+    /// 文本框打开期间的每一次鼠标移动，无论指针位于何处。一旦文本表面取得鼠标，tracking area 就停止上报，
+    /// 导致光标停留在上一次所设的状态。文本框内为 I 形或缩放箭头；画布其余部分为 Type 工具的 I 形；
+    /// 离开画布时为箭头，仅在离开瞬间设置一次，避免工具栏自身控件的光标被覆盖。
     private var moveMonitor: Any?
     private var pointerOnCanvas = true
     override func viewDidMoveToWindow() {
@@ -370,7 +367,7 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         }
     }
 
-    /// The arrows for the edge or corner a handle resizes, turned with the text box.
+    /// 缩放手柄对应的边缘或角点的箭头，随文本框一起旋转。
     private func handleCursor(_ index: Int) -> NSCursor {
         let positions: [NSCursor.FrameResizePosition] = [.topLeft, .top, .topRight, .right, .topLeft, .top, .topRight, .right]
         let rotation = canvas?.session.textDraft?.transform?.rotation ?? 0
@@ -380,14 +377,13 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
         return .frameResize(position: position, directions: [.inward, .outward])
     }
 
-    /// How far either side of an edge counts as that edge, in the box's own units. Capped so a small box keeps a
-    /// middle to type in.
-    /// The Move tool's box grabs within 10 screen points of an edge; the handles here are drawn 6 points across, so
-    /// the same reach is 10/6 of one.
+    /// 距离一条边多远的区域算作该边，以文本框自身单位计量。设有上限以保证小文本框仍留有可键入的中间区域。
+    /// Move 工具的框在距边 10 个屏幕点内即捕获；此处手柄绘制宽度 6 点，
+    /// 因此同等捕获范围为一个手柄的 10/6。
     private var edgeReach: CGFloat { min(handleSize * 10 / 6, min(bounds.width, bounds.height) / 3) }
 
-    /// The edge or corner at a point, in handle order: a band along each edge, as the Move tool's box has, rather
-    /// than only the handle squares. Nil anywhere else, which is the text.
+    /// 某点所对应的边缘或角点，按手柄顺序：沿每条边有一条捕获带，正如 Move 工具的框，
+    /// 而非仅限于手柄方块。其余位置返回 nil，表示处于文本区域。
     private func handle(at point: CGPoint) -> Int? {
         let reach = edgeReach
         let left = point.x <= reach, right = point.x >= bounds.width - reach
@@ -423,7 +419,7 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
             NSColor.white.setFill(); rect.fill()
             NSColor.controlAccentColor.setStroke(); NSBezierPath(rect: rect).stroke()
         }
-        // Text that doesn't fit is marked by a plus drawn in the bottom-right handle, as in Photoshop.
+        // 装不下的文本以绘制在右下角手柄中的加号标记，仿 Photoshop 的做法。
         if let container = textView.textContainer, let layout = textView.layoutManager {
             layout.ensureLayout(for: container)
             let range = layout.glyphRange(for: container)
@@ -445,8 +441,8 @@ final class InlineTextEditor: NSView, NSTextViewDelegate {
               let handle = handle(at: convert(event.locationInWindow, from: nil)) else { return }
         let transform = shownTransform ?? draft.transform ?? LayerTransform(origin: draft.origin, size: logicalSize)
         let pixel = canvas.session.viewport.documentPoint(from: canvas.convert(event.locationInWindow, from: nil), documentSize: document.size)
-        // Dragging a handle turns point text into a box of the size it has right now, which then holds the text and
-        // wraps it, rather than scaling the text. Its scale and rotation are whatever the layer already had.
+        // 拖动手柄将点文本转换为当前大小的文本框，文本随即被框住并换行，而非按比例缩放文本。
+        // 缩放与旋转沿用图层原本的值。
         var fixed = draft
         if fixed.style.boxSize == nil {
             fixed.style.boxSize = logicalSize

@@ -1,21 +1,20 @@
 import CoreGraphics
 import Foundation
 
-/// Draws a layer held as an unchanged image plus replacement tiles — a painted layer's raster snapshot, or a
-/// brush stroke in progress — so it looks the same as those pixels drawn as one image by `LayerRenderer`.
+/// 把图层绘制为「未变更图像 + 替换瓦片」的形式——即绘制图层的栅格快照，或进行中的画笔笔触——
+/// 使其与 `LayerRenderer` 将像素作为一张完整图像绘制时的结果一致。
 ///
-/// Drawing each tile on its own resamples it without its neighbours (seams) and can't use the sharp halvings,
-/// and the live stroke used to switch the whole layer to Nearest, so pixels shifted when painting started and
-/// again when it ended. Instead the tiled areas are rebuilt as pieces: squares of the layer grid, aligned to
-/// every halving, recomposed at full resolution with a margin of surrounding pixels, reduced with the same
-/// halvings as the image, and drawn only inside the square. The margin covers everything the halvings and Core
-/// Graphics's last resample can reach, so a piece's pixels match the whole image's; the unchanged image fills
-/// the rest. Clips are hard-edged so the parts meet without gaps or overlap.
+/// 单独绘制每个瓦片时会在没有相邻像素的情况下重采样（产生接缝），且无法使用 sharp halvings；
+/// 此前实时笔触会把整个图层切换到 Nearest，导致绘画开始与结束时像素发生位移。
+/// 取而代之，将瓦片区域重建为 pieces：按图层网格的方形、与每次 halving 对齐、
+/// 周围带一圈像素边缘、以全分辨率重绘，并以与图像相同的 halving 缩小，仅在方块内绘制。
+/// 边缘覆盖 halving 与 Core Graphics 最终重采样所能触及的所有范围，使 piece 的像素与整张图像一致；
+/// 其余部分由未变更图像填充。剪裁为硬边，使各部分恰好相接而无缝隙或重叠。
 nonisolated enum TiledLayerRenderer {
     nonisolated struct Piece: @unchecked Sendable {
-        /// Grid pixels this piece draws.
+        /// 本 piece 所绘制的网格像素区域。
         let interior: CGRect
-        /// Grid pixels its image holds: the interior and a margin.
+        /// 其图像所保存的网格像素：内部区域加上边缘。
         let region: CGRect
         let image: CGImage
         func offsetBy(_ offset: CGPoint) -> Piece {
