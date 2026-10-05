@@ -210,6 +210,17 @@
         }
       }
     },
+    "About Compositor": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关于 Compositor"
+          }
+        }
+      }
+    },
     "Actual Pixels": {
       "extractionState": "manual",
       "localizations": {
@@ -6711,6 +6722,17 @@
         }
       }
     },
+    "Original version by Robbie Tilton, released under the MIT License.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原作者 Robbie Tilton，以 MIT 许可证发布。"
+          }
+        }
+      }
+    },
     "Outer Glow": {
       "extractionState": "manual",
       "localizations": {
@@ -8581,6 +8603,17 @@
         }
       }
     },
+    "Simplified Chinese translation by %@": {
+      "extractionState": "extracted",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "简体中文翻译：%@"
+          }
+        }
+      }
+    },
     "Size": {
       "extractionState": "manual",
       "localizations": {
@@ -9666,6 +9699,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "矢量示波器"
+          }
+        }
+      }
+    },
+    "Version %@": {
+      "extractionState": "extracted",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本 %@"
+          }
+        }
+      }
+    },
+    "Version %@ (%@)": {
+      "extractionState": "extracted",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本 %@（%@）"
           }
         }
       }
