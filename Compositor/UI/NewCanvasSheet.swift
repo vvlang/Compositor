@@ -10,7 +10,9 @@ struct NewCanvasSheet: View {
     @State private var height = "1080"
     @State private var suggestedClipboardSize = false
     @FocusState private var focusedField: Field?
-    private enum Field { case width, height }
+    /// rawValue 是 UI 测试依赖的辅助功能标识符，必须跨语言稳定，
+    /// 所以它跟可翻译的标题分开。
+    private enum Field: String { case width = "widthInput", height = "heightInput" }
     private var valid: Bool {
         CanvasDocument.validDimension(width) != nil && CanvasDocument.validDimension(height) != nil
     }
@@ -51,7 +53,7 @@ struct NewCanvasSheet: View {
                 Image(systemName: "multiply").foregroundStyle(.tertiary).padding(.top, 20)
                 dimension("Height", text: $height, field: .height)
             }
-            Text(valid ? "Transparent canvas · sRGB" : "Enter whole numbers from 1 to \(DocumentLimits.maxSide.formatted()) pixels.")
+            L10n.text(valid ? "Transparent canvas · sRGB" : "Enter whole numbers from 1 to \(DocumentLimits.maxSide.formatted()) pixels.")
                 .font(.callout).foregroundStyle(valid ? Color.secondary : Color.orange)
             HStack(spacing: 10) {
                 Button("Open project") { onOpen?() }.buttonStyle(.bordered)
@@ -104,13 +106,15 @@ struct NewCanvasSheet: View {
         }
         return nil
     }
-    private func dimension(_ title: String, text: Binding<String>, field: Field) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.callout.weight(.medium))
+    private func dimension(_ title: String.LocalizationValue, text: Binding<String>, field: Field) -> some View {
+        // 标识符必须跨语言稳定，所以由 field 决定，而不是由标题（标题会变）。
+        let label = String(localized: title)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: label).font(.callout.weight(.medium))
             HStack {
-                TextField(title, text: text).textFieldStyle(.plain)
+                TextField(label, text: text).textFieldStyle(.plain)
                     .focused($focusedField, equals: field)
-                    .accessibilityIdentifier(title.lowercased() + "Input")
+                    .accessibilityIdentifier(field.rawValue)
                 Text("px").foregroundStyle(.secondary)
             }
             .padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))

@@ -227,8 +227,12 @@ struct CursorTests {
         table.mouseMoved(with: mouse(at: name, flags: .option, in: window))
         #expect(NSCursor.current === CanvasView.duplicateCursor, "Option over a layer's name offers to duplicate it")
         let row = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: false))
+        // 缩略图的标签是「选择图像：<图层名>」，整句都会随语言变。用完整标签匹配，
+        // 而不是只匹配图层名——「链接蒙版：<图层名>」那个按钮也以图层名结尾。
+        let layerNames = session.document?.layers.map(\.name) ?? []
         let thumbnail = try #require(descendants(row).first {
-            $0 is NSButton && !$0.isHiddenOrHasHiddenAncestor && $0.accessibilityLabel()?.hasPrefix("Select image") == true
+            guard $0 is NSButton, !$0.isHiddenOrHasHiddenAncestor, let label = $0.accessibilityLabel() else { return false }
+            return layerNames.contains { label == L10n.string("Select image: \($0)") }
         })
         row.layoutSubtreeIfNeeded()
         #expect(thumbnail.frame.size == CGSize(width: 36, height: 27), "the thumbnail takes the 400 × 300 canvas's shape")

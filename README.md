@@ -1,15 +1,15 @@
 # Compositor
 
-Adobe Photoshop costs too much and tools like GIMP don’t feel familiar enough for me to stay in flow. That’s why I built Compositor.
+Adobe Photoshop 太贵，而 GIMP 那类工具的体验又不够贴近 Photoshop，让我的创作流总是被打断。正因如此，我建了 Compositor。
 
-The goal was to create a full-featured image editor that is completely free and open source. I used to use Photoshop for compositing and post-processing, so Compositor is built around that workflow - with the tools needed to create a pixel-perfect final image.
+目标是做一个完全免费开源的全功能图像编辑器。我过去一直用 Photoshop 做合成与后期，所以 Compositor 是围绕这条工作流来设计的——一切工具都为能做出像素级精确的成片服务。
 
-Because it’s open source, you can download the Xcode project and add, remove, or modify any feature to fit your workflow.
+因为它是开源的，你可以下载 Xcode 工程，按自己的需要增删或修改任何功能。
 
-## Installation
+## 安装
 
-### Download
-Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compositor), or download the latest release directly from [GitHub Releases](https://github.com/robbietilton/Compositor/releases/latest).
+### 下载
+从 [robbietilton.com/compositor](https://robbietilton.com/compositor) 获取 Compositor，或直接从 [GitHub Releases](https://github.com/robbietilton/Compositor/releases/latest) 下载最新发布版。
 
 ### Homebrew
 
@@ -17,85 +17,85 @@ Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compo
 brew install --cask robbietilton-compositor
 ```
 
-## Features
+## 功能
 
-### Layers
-- Layers and folders, with opacity and Photoshop's full set of blend modes in its order — a folder's opacity dims everything inside it
-- Layer masks: paint, fill, invert, blur and feather them anywhere on the canvas, past the layer's own pixels; link or unlink them to transform a mask on its own
-- Clipping masks and folder masks
-- Adjustment layers: Hue/Saturation, Levels, Curves, Exposure, Gradient Map, Grain, Black & White, Color Balance, Invert, Gaussian Blur, Motion Blur and Noise
-- Layer effects: Stroke, Drop Shadow, Color Overlay, Inner Shadow, Outer Glow and Inner Glow, rendered on the GPU and editable at any time
-- Merge Down, Merge Layers and Merge Group (⌘E)
-- Duplicate, rename inline, reorder and nest by drag and drop; Option-drag to duplicate; a right-click menu in the Layers panel
-- Copy and paste whole layers and folders (⌘C/⌘V with no selection), within a project or between projects, or drag them between projects
+### 图层
+- 图层与文件夹，各自带不透明度，并按 Photoshop 的全套混合模式顺序排列——文件夹的不透明度会作用于其内部所有内容
+- 图层蒙版：可涂抹、填充、反相、模糊、羽化，且范围超出图层本身的像素；可链接/解除链接，从而单独变换蒙版
+- 剪贴蒙版与文件夹蒙版
+- 调整图层：色相/饱和度、色阶、曲线、曝光、渐变映射、颗粒、黑白、色彩平衡、反相、高斯模糊、动感模糊、降噪
+- 图层样式：描边、投影、颜色叠加、内阴影、外发光、内发光——全部在 GPU 上实时渲染，可随时修改
+- 向下合并、合并图层、合并组 (⌘E)
+- 复制、内联重命名、拖拽重排与嵌套；启用链接或拖拽即复制；图层面板支持右键菜单
+- 整图层与文件夹的复制粘贴 (⌘C/⌘V 且无选区)，可在同一工程内或跨工程之间复制，也可直接拖拽
 
-### Transform
-- Non-destructive move, scale, rotate and flip — images keep their full resolution however small you make them
-- Free distort (⌘-drag a handle), with Shift to lock to an axis
-- Transform several layers, or a whole folder, together
-- Snapping to canvas and layer edges and centers, with guides
-- Exact values for position, size, scale and angle, stepped with the arrow keys
-- Flip Layer and Flip Canvas, horizontal and vertical
+### 变换
+- 非破坏性的移动、缩放、旋转与翻转——图片永远保持原始分辨率
+- 自由变形 (⌘-拖动手柄)，按住 Shift 锁定区间内一项
+- 多图层或整个文件夹可一起变换
+- 吸附到画布、图层边与中心，配合参考线使用
+- 位置、尺寸、缩放、角度的精确数值，按方向键步进
+- 水平/垂直翻转图层、水平/垂直翻转画布
 
-### Selections
-- Rectangle and Ellipse Marquee, Freehand and Polygonal Lasso, and the Magic tool — Wand selects by color, Object traces whatever you click (Tab switches)
-- Select Subject, and Expand, Contract and Feather on any selection
-- Add to and subtract from selections, move the outline, or move and duplicate the pixels inside
-- Load a layer's pixels or a mask as a selection
-- Content-Aware Fill, which can also extend an image past its edges
+### 选区
+- 矩形与椭圆选框、自由与多边形套索，以及魔棒工具——魔棒按颜色选取，对象选择跟踪你点击的任何对象（Tab 在两模式间切换）
+- 选择主体，以及扩展、收缩、羽化选区
+- 选区相加与相减、移动轮廓、移动或复制选区内的像素
+- 将图层像素或蒙版载入选区
+- 内容识别填充，也可用于把图像延伸超出原边界
 
-### Painting and retouching
-- Brush with size, hardness, opacity and smoothing, in Paint or Erase mode (B and E), and Shift for straight lines
-- Spot Healing Brush (content-aware)
-- Clone Stamp, aligned or not, sampling one layer or all of them
-- Blur tool, on pixels or masks
-- Gradient tool and Shape tool (rectangles, rounded rectangles, ellipses and lines), which stay editable rather than being rasterized
-- Type tool (T): inline multiline editing in draggable, resizable paragraph boxes; font, size, color, alignment and spacing in the tool header; transform text and use it as a clipping mask
-- Eyedropper and a full color picker
+### 绘画与修饰
+- 画笔带尺寸、硬度、高度与平滑，绘制或擦除模式 (B/E)，按住 Shift 画直线
+- 污点修复画笔（内容识别）
+- 仿制图章，可对齐或不对齐，可从一个图层或全部图层取样
+- 模糊工具，可作用于像素或蒙版
+- 渐变工具与形状工具（矩形、圆角矩形、椭圆、直线），保持可编辑而非栅格化
+- 文字工具 (T)：在可拖动、可调整大小的段落框中内联多行编辑；字体、尺寸、颜色、对齐与字距在工具栏内；可变换文字并用作剪贴蒙版
+- 吸管与完整的颜色选择器
 
-### Adjustments and filters
-- Camera Raw filter: light, color, curves, color mixer, color grading, detail, optics and geometry, in a panel beside the canvas
-- Levels (with Auto), Curves, Hue/Saturation, Exposure, Gradient Map, Grain, Black & White, Color Balance and Invert
-- Gaussian Blur and Motion Blur that spread past a layer's edges
-- Add Noise, Vignette, Bloom / Glow, Tonal Contrast, Lens Correction and Remove Background
-- Live previews, limited to the selection when there is one
+### 调整与滤镜
+- Camera Raw 滤镜：光线、颜色、曲线、颜色混合、调色、细节、光学、几何，置于画布侧边的面板中
+- 色阶（带自动）、曲线、色相/饱和度、曝光、渐变映射、颗粒、黑白、色彩平衡、反相
+- 高斯模糊、动感模糊，可超出图层边缘
+- 添加杂色、晕影、辉光、色调对比、镜头校正、移除背景
+- 实时预览，有选区时仅作用于选区
 
-### Canvas and files
-- Multiple projects in tabs
-- Rulers (⌘R), guides dragged from them, a layout grid with adjustable spacing and subdivisions, and Snap To for guides, grid, layers and document bounds
-- Crop with snapping, ratios including 3:4 and 9:16, and Option for symmetric cropping; with a selection, the crop starts at it
-- Canvas Size, Image Size and Trim
-- Sharp high-quality downsampling when zoomed out, and a pixel grid when zoomed in
-- Import JPEG, PNG, HEIC, TIFF, SVG, camera RAW (with a develop step first) and Photoshop PSD and PSB (8-bit RGB; not CMYK). Photoshop folders, masks, blend modes, fill rectangles/ellipses, and simple horizontal text stay editable; other vectors and vertical text become pixels. A conversion report is shown before anything is applied.
-- Large documents: the memory budget scales with your Mac, and a Photoshop file too big to open has its layers cropped to the canvas instead
-- Export JPEG with a live preview (⇧⌥⌘S); Copy Merged
-- Keep working while a project saves
-- Photoshop-style keyboard shortcuts throughout, remappable in Edit > Keyboard Shortcuts
-- Drag a number's label to scrub its value, as in Photoshop
-- Automatic updates, signed and notarized
+### 画布与文件
+- 标签页式多工程
+- 标尺 (⌘R)、从中拖出的参考线、可调间距与分段的布局网格，以及对参考线、网格、图层与画布边界的吸附
+- 裁剪含吸附、预设比例（3:4、9:16 等），按住 Option 可对称裁剪；已有选区时从选区开始裁剪
+- 画布大小、图像大小、裁掉边缘
+- 缩小时的高质量降采样，缩放至足够大时显示像素网格
+- 支持 JPEG、PNG、HEIC、TIFF、SVG、相机 RAW（需先执行显影），以及 Photoshop PSD 与 PSB（8-bit RGB，不支持 CMYK）的导入。Photoshop 的文件夹、蒙版、混合模式、填充矩形/椭圆、简单水平文字保持可编辑；其他矢量与垂直文字会栅格化为像素。开始导入前会显示转换报告
+- 大文档：内存预算会按你的 Mac 自动调整；太大的 Photoshop 文件无法打开时，其图层会被裁剪到画布范围
+- JPEG 导出含实时预览 (⇧⌥⌘S)；合并拷贝
+- 工程存储中仍可继续编辑
+- 全程仿照 Photoshop 的快捷键风格，可在 Edit > Keyboard Shortcuts 中重新映射
+- 像 Photoshop 那样，可以拖动数值旁边的标签来刮擦调整
+- 自动更新，已签名并公证
 
-### Works with AI agents
-- AI agents and scripts can build and edit projects directly: a `.comp` is a folder of PNG layers and a manifest, and an open project updates live as it's written. See [Writing Compositor projects](docs/writing-comp-files.md)
+### 与 AI agent 协作
+- AI agent 与脚本可以直接构造、修改工程：`.comp` 是一个装满 PNG 图层与清单的文件夹，已打开的工程会在被写入时实时刷新。参见 [Writing Compositor projects](docs/writing-comp-files.md)
 
 ## Requirements
 
-- macOS 26.0 or later on a Mac with Apple silicon
-- Xcode 26 or later (to build from source)
+- macOS 26.0 或更新版本，运行于 Apple Silicon Mac
+- Xcode 26 或更新版本（用于从源码构建）
 
-## Building
+## 构建
 
-Open `Compositor.xcodeproj` and run the **Compositor** scheme.
+用 Xcode 打开 `Compositor.xcodeproj`，运行 **Compositor** scheme 即可。
 
-## Releasing
+## 发布
 
-`scripts/release.sh` builds a Release version, signs it with Developer ID, notarizes and staples it, and packages it into `dist/Compositor-<version>.dmg`.
+`scripts/release.sh` 会构建 Release 版本、用 Developer ID 签名、做公证并打固，最终输出 `dist/Compositor-<version>.dmg`。
 
-It needs, all kept outside this repository:
+它需要以下资源（全部保存在仓库外）：
 
-- a **Developer ID Application** certificate in the login keychain
-- notarization credentials saved with `xcrun notarytool store-credentials "compositor-notary" …`
-- [`create-dmg`](https://github.com/create-dmg/create-dmg) (`brew install create-dmg`)
+- 一份 **Developer ID Application** 证书，保存在登录钥匙串里
+- 通过 `xcrun notarytool store-credentials "compositor-notary" …` 保存的公证凭据
+- [`create-dmg`](https://github.com/create-dmg/create-dmg)（`brew install create-dmg`）
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT —— 见 [LICENSE](LICENSE)。

@@ -1,15 +1,15 @@
-# Notes for AI agents
+# 给 AI agent 的笔记
 
-Compositor is a macOS image editor for compositing and photo work, written in Swift (SwiftUI and AppKit, with some C for pixel work).
+Compositor 是一个面向合成与照片后期的 macOS 图像编辑器，使用 Swift（SwiftUI 与 AppKit，部分像素相关代码用 C）实现。
 
-## Designing or editing a Compositor project
+## 设计或修改 Compositor 工程
 
-If you've been asked to make or change an image in a `.comp` project, you don't need the app's source code. Read [docs/writing-comp-files.md](docs/writing-comp-files.md): it covers the file format, the rules that make a project load, and how to write it safely while it's open, so the person can watch the canvas update as you work.
+如果任务是在 `.comp` 工程里增删或改动图像，你并不需要看 App 源代码。读 [docs/writing-comp-files.md](docs/writing-comp-files.md)：里面讲清文件格式、让工程能打开的规则，以及如何在工程打开时安全写入，从而让人能看到画布实时更新。
 
-## Working on the app itself
+## 改动 App 本身
 
-- Build: open `Compositor.xcodeproj` and run the **Compositor** scheme, or `xcodebuild -project Compositor.xcodeproj -scheme Compositor -destination 'platform=macOS' build`.
-- Tests: the `CompositorTests` target (`xcodebuild ... test -only-testing:CompositorTests`). CI runs these on every push.
-- Match the surrounding code: its naming, its comment style and density.
-- American spelling in code, comments and UI ("color", not "colour").
-- The project file format is described in [docs/project-format.md](docs/project-format.md). A change to what's saved means a format version bump there and in `ProjectManifest.current`.
+- 构建：用 Xcode 打开 `Compositor.xcodeproj` 并运行 **Compositor** scheme，或执行 `xcodebuild -project Compositor.xcodeproj -scheme Compositor -destination 'platform=macOS' build`。
+- 测试：跑 `CompositorTests` 这个 target（`xcodebuild ... test -only-testing:CompositorTests`）。CI 在每次 push 时都会执行。
+- 模仿周围代码的命名、注释密度与风格。
+- 代码、注释和界面统一使用美式拼写（color，不出现 "colour"）。
+- 工程文件格式在 [docs/project-format.md](docs/project-format.md) 里说明。凡是改了保存内容的地方，都要在那里以及 `ProjectManifest.current` 中把格式版本号 +1。

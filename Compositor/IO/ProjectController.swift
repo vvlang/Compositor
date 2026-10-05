@@ -329,11 +329,11 @@ final class ProjectController {
         await finishWriting()
         guard session.isModified, session.document != nil else { return true }
         let alert = NSAlert()
-        alert.messageText = "Save changes to \(session.projectURL?.lastPathComponent ?? "Untitled")?"
-        alert.informativeText = "Your changes will be lost if you don’t save them."
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Don’t Save")
+        alert.messageText = L10n.string("Save changes to \(session.projectURL?.lastPathComponent ?? L10n.string("Untitled"))?")
+        alert.informativeText = L10n.string("Your changes will be lost if you don’t save them.")
+        alert.addButton(withTitle: L10n.string("Save"))
+        alert.addButton(withTitle: L10n.string("Cancel"))
+        alert.addButton(withTitle: L10n.string("Don’t Save"))
         let response = await show(alert)
         if response == .alertFirstButtonReturn { return await saveCurrent() }
         return response == .alertThirdButtonReturn

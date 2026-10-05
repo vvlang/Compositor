@@ -8,7 +8,7 @@ struct TransformInspector: View {
     }
     var body: some View {
         HStack(spacing: 12) {
-          Text(session.transformTargetsMask ? "Transform Mask" : "Transform").font(ToolHeaderStyle.titleFont)
+          L10n.text(session.transformTargetsMask ? "Transform Mask" : "Transform").font(ToolHeaderStyle.titleFont)
               .padding(.leading, 18)
           // Command flips Auto Select while it's held, and the box shows it flipped (see HeldModifiers).
           Toggle("Auto Select", isOn: Binding(get: { session.transformAutoSelect != held.contains(.command) },
@@ -19,25 +19,25 @@ struct TransformInspector: View {
               .help("Show the transform box and handles (⌘H). When hidden, drag anywhere to move the layer.")
           ScrollView(.horizontal) {
             HStack(spacing: 12) {
-                field("X", value: value.origin.x) { $0.origin.x = $1 }.frame(width: 85)
-                field("Y", value: value.origin.y) { $0.origin.y = $1 }.frame(width: 85)
-                TransformValueField(label: "W", value: value.size.width, range: 1...30_000, finish: finish) { resize($0, width: true) }.frame(width: 85)
-                TransformValueField(label: "H", value: value.size.height, range: 1...30_000, finish: finish) { resize($0, width: false) }.frame(width: 85)
+                field("X", id: "X", value: value.origin.x) { $0.origin.x = $1 }.frame(width: 85)
+                field("Y", id: "Y", value: value.origin.y) { $0.origin.y = $1 }.frame(width: 85)
+                TransformValueField(label: "W", id: "W", value: value.size.width, range: 1...30_000, finish: finish) { resize($0, width: true) }.frame(width: 85)
+                TransformValueField(label: "H", id: "H", value: value.size.height, range: 1...30_000, finish: finish) { resize($0, width: false) }.frame(width: 85)
                 // Shift flips the lock while dragging a handle, and the button shows it flipped.
                 Toggle(isOn: Binding(get: { session.locksTransformRatio != held.contains(.shift) },
                                      set: { session.locksTransformRatio = $0 != held.contains(.shift) })) { Image(systemName: "link") }
                     .toggleStyle(.button).help("Lock aspect ratio. Hold Shift while dragging a handle to turn it the other way.")
-                TransformValueField(label: "Scale", suffix: "%", value: value.scalePercent(pixelSize: pixelSize), range: 0.1...30_000, finish: finish) { number in
+                TransformValueField(label: "Scale", id: "scale", suffix: "%", value: value.scalePercent(pixelSize: pixelSize), range: 0.1...30_000, finish: finish) { number in
                     change { value in
                         guard number > 0 else { return }
                         value = value.scaled(toPercent: number, pixelSize: pixelSize)
                     }
                 }.frame(width: 110).help("Scale width and height together, about the center")
-                field("°", value: value.rotation, range: -360...360) { $0.rotation = $1.truncatingRemainder(dividingBy: 360) }.frame(width: 75)
+                field("°", id: "angle", value: value.rotation, range: -360...360) { $0.rotation = $1.truncatingRemainder(dividingBy: 360) }.frame(width: 75)
                 Picker("Sampling", selection: Binding(get: { value.sampling }, set: { sampling in
                     change { $0.sampling = sampling }
                 })) {
-                    ForEach(LayerSampling.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(LayerSampling.allCases, id: \.self) { Text(verbatim: $0.localizedName).tag($0) }
                 }.frame(width: 170)
                 Button("Flip H") { change { $0.flipX.toggle() } }
                 Button("Flip V") { change { $0.flipY.toggle() } }
@@ -64,9 +64,11 @@ struct TransformInspector: View {
     /// 100% scale: the layer's pixels (a blank layer's size before this edit, so typing doesn't compound).
     private var held: NSEvent.ModifierFlags { HeldModifiers.shared.flags }
     private var pixelSize: CGSize { session.transformPixelSize ?? session.activeLayer?.size ?? value.size }
-    private func field(_ label: String, value: CGFloat, range: ClosedRange<CGFloat> = -30_000...30_000,
+    /// `id` 单独传，因为辅助功能标识符必须跨语言稳定，不能由可翻译的标题推出来。
+    private func field(_ label: String.LocalizationValue, id: String, value: CGFloat,
+                       range: ClosedRange<CGFloat> = -30_000...30_000,
                        set: @escaping (inout LayerTransform, CGFloat) -> Void) -> some View {
-        TransformValueField(label: label, value: value, range: range, finish: finish) { number in change { set(&$0, number) } }
+        TransformValueField(label: label, id: id, value: value, range: range, finish: finish) { number in change { set(&$0, number) } }
     }
     /// A value typed, stepped or dragged shows on the canvas as it changes, and is applied without Cancel or Apply —
     /// a transform never resamples the layer's pixels, so there is nothing to confirm — as one undo step once the
@@ -101,7 +103,9 @@ struct TransformInspector: View {
 }
 
 private struct TransformValueField: View {
-    let label: String
+    let label: String.LocalizationValue
+    /// UI 测试用的辅助功能标识符，与可翻译的标题分开。
+    let id: String
     var suffix: String? = nil
     let value: CGFloat
     let range: ClosedRange<CGFloat>
@@ -113,14 +117,14 @@ private struct TransformValueField: View {
     @FocusState private var focused: Bool
     var body: some View {
         HStack(spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(verbatim: String(localized: label)).font(.caption).foregroundStyle(.secondary)
                 .scrubbable(sensitivity: 1, value: Binding(get: { value }, set: { newValue in
                     change(newValue)
                     text = Self.formatted(Double(newValue))
                 }), range: range, step: 1, onEnd: finish)
-            TextField(label, text: $text)
+            TextField(String(localized: label), text: $text)
                 .textFieldStyle(.roundedBorder).focused($focused)
-                .accessibilityIdentifier("transform\(label)")
+                .accessibilityIdentifier("transform\(id)")
                 .onAppear { sync() }
                 .onChange(of: value) { if !focused { sync() } }
                 .onChange(of: focused) { if !focused { finish(); sync() } }

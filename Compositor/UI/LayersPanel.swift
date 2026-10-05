@@ -6,6 +6,15 @@ struct LayersPanel: View {
     var width: CGFloat = 252
     static let widths: ClosedRange<Double> = 202...352
 
+    /// 底部垃圾桶针对什么，取决于当前选中的是效果、蒙版还是图层。拆成属性而不是
+    /// 留在原地，是因为四层三元没法整体进目录——中文语序和英文不同。
+    private var deleteTitle: String {
+        if session.selectedEffect != nil { return L10n.string("Delete selected effect") }
+        if session.isMaskSelected { return L10n.string("Delete layer mask") }
+        return session.selectedLayerIDs.count > 1
+            ? L10n.string("Delete selected layers") : L10n.string("Delete selected layer")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -23,7 +32,7 @@ struct LayersPanel: View {
                 VStack(spacing: 10) {
                     Image(systemName: "square.3.layers.3d").font(.system(size: 25, weight: .light))
                     Text("No layers yet").font(.callout.weight(.medium))
-                    Text(session.document == nil ? "Create a canvas or import an image." : "Import an image or add a blank layer.")
+                    L10n.text(session.document == nil ? "Create a canvas or import an image." : "Import an image or add a blank layer.")
                         .font(.caption).multilineTextAlignment(.center)
                 }
                 .foregroundStyle(.secondary).padding(16)
@@ -40,7 +49,7 @@ struct LayersPanel: View {
                 LayerMaskMenu(session: session)
                 Menu {
                     ForEach(LayerEffectKind.allCases, id: \.self) { kind in
-                        Button(kind.rawValue + "…") { session.addEffect(kind) }
+                        Button { session.addEffect(kind) } label: { Text(verbatim: kind.localizedName + "…") }
                     }
                 } label: { Image(systemName: "sparkles").footerHitArea() }
                     .menuStyle(.borderlessButton).fixedSize()
@@ -48,14 +57,14 @@ struct LayersPanel: View {
                     .accessibilityIdentifier("layerEffects").disabled(!session.canEditEffects)
                 Menu {
                     ForEach(AdjustmentKind.allCases, id: \.self) { kind in
-                        Button(kind.rawValue) { session.addAdjustment(kind) }
+                        Button { session.addAdjustment(kind) } label: { Text(verbatim: kind.localizedName) }
                     }
                 } label: { Image(systemName: "circle.lefthalf.filled").footerHitArea() }
                     .menuStyle(.borderlessButton).fixedSize().help("New adjustment layer").disabled(!session.canEditLayers)
                 Spacer()
                 Button { session.deleteLayerOrMask() } label: { Image(systemName: "trash").footerHitArea() }
-                    .help(session.selectedEffect != nil ? "Delete selected effect" : session.isMaskSelected ? "Delete layer mask" : session.selectedLayerIDs.count > 1 ? "Delete selected layers" : "Delete selected layer")
-                    .accessibilityLabel(session.selectedEffect != nil ? "Delete selected effect" : session.isMaskSelected ? "Delete layer mask" : session.selectedLayerIDs.count > 1 ? "Delete selected layers" : "Delete selected layer")
+                    .help(deleteTitle)
+                    .accessibilityLabel(deleteTitle)
                     .accessibilityIdentifier("deleteLayer")
                     .disabled(!session.canEditLayers || session.activeLayer == nil)
             }

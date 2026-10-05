@@ -1,31 +1,31 @@
-# Brush rendering and 4K benchmark
+# 画笔渲染与 4K 基准测试
 
-The brush now sweeps a continuous round tip along the smoothed pointer path with a Metal compute kernel. Each changed 256 × 256 tile is processed once per update. Permanent coverage and the provisional tail have separate buffers, so replacing a tail cannot leave old pixels behind. Soft coverage accumulates by integrating paint deposition over distance travelled, equivalent to source-over tips at 2.5% diameter spacing. This blends self-crossings and corners smoothly and is independent of pointer-event count. The opacity setting caps the entire accumulated stroke. Hard tips retain their antialiased silhouette; the software fallback uses 2.5% soft / 1.5% hard tip spacing.
+画笔现在用一个 Metal compute kernel，沿平滑后的指针路径扫描一段连续的圆形笔尖。每个被改动的 256 × 256 tile 每帧只处理一次。永久覆盖和临时的笔尾使用各自独立的缓冲区，因此替换笔尾时不会留下旧的像素。柔边覆盖通过沿行走距离积分涂色沉积量来累积，相当于笔尖直径 2.5% 间距上的 source-over 叠加。这能让笔画的交叉和拐角被自然平滑地融合，且与点击事件数量无关。厚度设置决定整笔笔画的累计上限。硬边笔尖保留其抗锯齿轮廓；软件降级路径使用 2.5% 软笔 / 1.5% 硬笔的间距。
 
-Mouse-up installs an immutable `RasterSnapshot` and records the undo entry synchronously. Snapshots share unchanged tiles and flatten their replacement lists using a spatial index. Bounds are found in changed tiles with a small optimized C routine, instead of scanning every document pixel in unoptimized Swift. The canvas and subsequent strokes read the tiles directly. A contiguous CGImage is created lazily when export or an image-processing operation needs its bytes. Masks use the same snapshot handoff, including white coverage in newly expanded areas.
+松开鼠标时同步安装不可变的 `RasterSnapshot` 并写入撤销记录。快照共享未改动的 tile，并用空间索引扁平化其替换列表。边界由一块小型优化过的 C routine 在改动的 tile 里查找，不再用未优化的 Swift 去扫描整张文档的像素。画布与之后的笔画直接读取 tile 数据。仅当导出或图像处理需要字节流时，才惰性创建连续的 CGImage。蒙版走的是同一种交接路径，包括新扩展区域内的白色覆盖。
 
-The Metal pipeline is compiled once by the system compiler and warmed when selecting Brush. This does not require Xcode's optional Metal toolchain. Pixel kernels remain optimized in Debug; Swift code retains its normal Debug optimization settings.
+Metal 流水线由系统编译器一次性编译，在选中画笔时被热启动。这不依赖 Xcode 的可选 Metal toolchain。Pixel kernel 在 Debug 构建中仍是优化过的；Swift 代码则保持其 Debug 默认的优化设置。
 
-## Measured on September 12, 2026
+## 2026 年 9 月 12 日实测
 
-4000 × 4000 document, 800 px brush, 0% hardness, 100% opacity. Two strokes of 120 pointer updates each, 40 document pixels per update, in a native 1000 × 1000 NSWindow at fit zoom. Times include the model update and `CanvasView.synchronizeDisplay()` / `displayIfNeeded()`. Mouse-up includes flush, commit, history, and the following display. These are synchronous CPU timings, not an input-to-photon measurement or a Photoshop benchmark.
+4000 × 4000 画布，800 px 画笔，硬度 0%，不透明度 100%。每笔 120 次指针更新，每次 40 文档像素，原生 1000 × 1000 NSWindow，适应窗口大小显示。耗时包含模型更新与 `CanvasView.synchronizeDisplay()` / `displayIfNeeded()`。鼠标松开包含 flush、提交、历史记录与随后的重绘。这些是同步的 CPU 时长，不是输入到屏幕的延迟，也不是与 Photoshop 的对比。
 
-| Debug, blank paint layer | Before | After |
+| Debug，空画布层 | Before | After |
 | --- | ---: | ---: |
-| Median pointer update | 6.54 ms | 2.64 ms |
-| 95th percentile update | 11.98 ms | 3.70 ms |
-| Mouse-up, first stroke | 1058 ms | 8.71 ms |
-| Mouse-up, second stroke | 1002 ms | 8.14 ms |
+| 中位指针更新 | 6.54 ms | 2.64 ms |
+| 第 95 百分位更新 | 11.98 ms | 3.70 ms |
+| 鼠标松开，第一笔 | 1058 ms | 8.71 ms |
+| 鼠标松开，第二笔 | 1002 ms | 8.14 ms |
 
-On an existing opaque 4K layer, the new 800 px brush measured 2.80 ms median / 5.38 ms p95, with 5.2–6.2 ms mouse-up. The 40 px brush measured 0.36–0.47 ms median, with 1.3–4.8 ms mouse-up. Timing varies with hardware, viewport, layer stack, and system load; no resolution-independent frame-rate guarantee is implied.
+在已存在的不透明 4K 图层上，新版 800 px 画笔测得中位 2.80 ms / p95 5.38 ms，鼠标松开 5.2–6.2 ms。40 px 画笔测得中位 0.36–0.47 ms，鼠标松开 1.3–4.8 ms。耗时随硬件、视图、图层栈与系统负载变化；本文不暗示分辨率无关的固定帧率。
 
-Release also built and passed the benchmark. Its 800 px blank-layer median was 2.81 ms and mouse-up was 9.6–11.0 ms (the original Release mouse-up was 87–111 ms). The opaque-layer run measured 4.35 ms median and 7.4–15.9 ms mouse-up; this variation reinforces using measured ranges rather than promising a fixed frame rate.
+Release 也构建并跑通了基准测试。其 800 px 空图层中位 2.81 ms，鼠标松开 9.6–11.0 ms（原本 Release 的鼠标松开为 87–111 ms）。不透明图层的中位 4.35 ms，鼠标松开 7.4–15.9 ms；这种差异说明应该给出实测区间，而不是承诺固定帧率。
 
-The final Debug unit run passed **171 tests in 25 suites**. Logs for this change are `/tmp/compositor-brush-final-tests.log`, `/tmp/compositor-brush-new-debug.log`, `/tmp/compositor-brush-new-release.log`, and `/tmp/compositor-brush-baseline-debug.log`.
+最终 Debug 单元测试跑通 **171 tests in 25 suites**。本变更的日志为 `/tmp/compositor-brush-final-tests.log`、`/tmp/compositor-brush-new-debug.log`、`/tmp/compositor-brush-new-release.log`、`/tmp/compositor-brush-baseline-debug.log`。
 
-## Reproduce
+## 复现
 
-Run performance tests alone, so other main-actor tests do not contend with the benchmark. `TEST_RUNNER_` forwards the environment variable into the Xcode test host.
+把性能测试单独跑，避免其他 main-actor 测试与基准测试争资源。`TEST_RUNNER_` 会把环境变量转发进 Xcode 测试宿主。
 
 ```sh
 TEST_RUNNER_BRUSH_BENCHMARK=1 xcodebuild \
@@ -36,16 +36,16 @@ TEST_RUNNER_BRUSH_BENCHMARK=1 xcodebuild \
   -only-testing:CompositorTests/BrushPerformanceTests test
 ```
 
-The benchmark logs `BRUSH BENCH` lines and exports `/tmp/compositor-brush-benchmark.png` for visual inspection. It exercises both blank and opaque layers. The exported example contains both benchmark passes.
+基准测试会输出 `BRUSH BENCH` 日志行，并把 `/tmp/compositor-brush-benchmark.png` 导出用于可视化检查。它既覆盖空图层也覆盖不透明图层，导出的示例中包含了两次基准测试的记录。
 
-Functional coverage includes continuous soft coverage at 800 px, tile boundaries, curve/tail replacement, opacity, selections, transformed layers, immediate subsequent strokes, mask painting/expansion, immutable snapshots, display/export agreement, undo/redo, save/reopen, and the software fallback. Snapshots are verified not to materialize during commit, display, or the next stroke.
+功能覆盖范围包括 800 px 的连续柔边覆盖、tile 边界、曲线与笔尾替换、不透明度、选区、变换后的图层、紧接着的后续笔画、蒙版绘制与扩展、不可变快照、显示与导出一致性、撤销/重做、存储与重新打开、以及软件降级路径。已验证快照在提交、显示或下一笔过程中都不会被实体化。
 
-## Self-intersection correction
+## 自相交修正
 
-The initial continuous-tip implementation took the maximum falloff at each pixel. That removed stamp ridges, but the meeting point of two feathered edges formed a sharp crease. Soft tips now integrate optical density along each curve segment, then convert the accumulated density to coverage. Permanent density is stored in floating-point tile buffers; provisional tails remain separate and are replaced, never double-counted. Hard tips keep their solid silhouette. The existing opacity cap and immediate snapshot commits are unchanged.
+最初连续笔尖的实现是取每个像素处最大的羽化衰减。它消除了堆叠时的条纹，但两条羽化边相遇时会形成一道锐折痕。柔笔现在改为沿每段曲线积分光学密度，再把累计密度转换为覆盖。永久密度存放在浮点 tile 缓冲区里；临时笔尾仍是独立的，替换时不会重复计数。硬笔保持其实心轮廓。原有的不透明度上限与立即提交快照的逻辑不变。
 
-Crossing tests compare the joined stroke against source-over coverage, verify the opacity cap, repeated flushes, the software fallback, and equivalent output at sparse/dense sampling for 12, 120, and 520 px tips. The matching 520 px / 4K example is exported to `/tmp/compositor-brush-crossing.png` by `BrushIntersectionTests/exportCrossingExample` with `TEST_RUNNER_BRUSH_BENCHMARK=1`.
+交叉测试把组合的笔画与 source-over 覆盖作对比，验证不透明度上限、重复 flush、软件降级路径，以及在 12、120、520 px 笔尖上稀疏/密集采样输出一致性。520 px / 4K 的对应示例会在 `TEST_RUNNER_BRUSH_BENCHMARK=1` 下由 `BrushIntersectionTests/exportCrossingExample` 导出到 `/tmp/compositor-brush-crossing.png`。
 
-With this correction, the 800 px / 4K Debug benchmark measured 3.08–3.12 ms median update and 6.3–9.7 ms mouse-up across blank and opaque layers. Log: `/tmp/compositor-intersection-bench.log`.
+经此修正，800 px / 4K 的 Debug 基准在空图层和不透明图层上测得中位更新 3.08–3.12 ms、鼠标松开 6.3–9.7 ms。日志：`/tmp/compositor-intersection-bench.log`。
 
-The post-correction full Debug suite passed **175 tests in 26 suites** (`/tmp/compositor-intersection-full.log`).
+修正后的完整 Debug 测试套件跑通 **175 tests in 26 suites**（`/tmp/compositor-intersection-full.log`）。

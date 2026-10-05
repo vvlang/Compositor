@@ -633,7 +633,8 @@ final class EditorSession {
     }
 
     /// Nestable transaction boundary; future tools can group a complete gesture.
-    func beginEdit(_ name: String) {
+    /// The name is kept untranslated so the menu can follow a language switch.
+    func beginEdit(_ name: String.LocalizationValue) {
         history.begin(name, document: document, selection: activeLayerID)
     }
 
