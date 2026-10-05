@@ -1,5 +1,7 @@
 # Writing Compositor projects (for AI agents and scripts)
 
+> 🌐 **中文版本**：[docs/writing-comp-files.zh-CN.md](docs/writing-comp-files.zh-CN.md) ｜ English (current file)
+
 A Compositor project (`.comp`) is a folder of PNG layer images plus a `manifest.json`. Anything that can write files can build or edit one, and Compositor updates the open canvas as the files change. No plugin or API is involved.
 
 ## Try it

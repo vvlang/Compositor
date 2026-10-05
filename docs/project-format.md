@@ -1,5 +1,7 @@
 # Compositor project format, versions 1–11
 
+> 🌐 **中文版本**：[docs/project-format.zh-CN.md](docs/project-format.zh-CN.md) ｜ English (current file)
+
 A `.comp` file is a macOS document package containing `manifest.json` and an `images/` directory of `<layer UUID>.png` assets.
 
 The manifest identifies `com.compositor.project`, version `11` for new saves (versions `1`–`10` remain readable), and the sRGB working space. It stores document UUID, pixel dimensions, active layer UUID, and layers in bottom-to-top order. Each layer stores its UUID, name, visibility, transform (origin, size, clockwise rotation, flips, sampling), and optional image filename. Blank layers have no image asset.

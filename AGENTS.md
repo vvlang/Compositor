@@ -1,5 +1,7 @@
 # Notes for AI agents
 
+> 🌐 **中文版本**：[README.zh-CN.md](README.zh-CN.md) ｜ English (current file)
+
 Compositor is a macOS image editor for compositing and photo work, written in Swift (SwiftUI and AppKit, with some C for pixel work).
 
 ## Designing or editing a Compositor project

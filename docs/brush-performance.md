@@ -1,5 +1,7 @@
 # Brush rendering and 4K benchmark
 
+> 🌐 **中文版本**：[docs/brush-performance.zh-CN.md](docs/brush-performance.zh-CN.md) ｜ English (current file)
+
 The brush now sweeps a continuous round tip along the smoothed pointer path with a Metal compute kernel. Each changed 256 × 256 tile is processed once per update. Permanent coverage and the provisional tail have separate buffers, so replacing a tail cannot leave old pixels behind. Soft coverage accumulates by integrating paint deposition over distance travelled, equivalent to source-over tips at 2.5% diameter spacing. This blends self-crossings and corners smoothly and is independent of pointer-event count. The opacity setting caps the entire accumulated stroke. Hard tips retain their antialiased silhouette; the software fallback uses 2.5% soft / 1.5% hard tip spacing.
 
 Mouse-up installs an immutable `RasterSnapshot` and records the undo entry synchronously. Snapshots share unchanged tiles and flatten their replacement lists using a spatial index. Bounds are found in changed tiles with a small optimized C routine, instead of scanning every document pixel in unoptimized Swift. The canvas and subsequent strokes read the tiles directly. A contiguous CGImage is created lazily when export or an image-processing operation needs its bytes. Masks use the same snapshot handoff, including white coverage in newly expanded areas.
