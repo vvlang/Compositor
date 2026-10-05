@@ -1,5 +1,7 @@
 # 给 AI agent 的笔记
 
+> 🌐 **English**：[AGENTS.zh-CN.md](AGENTS.zh-CN.md) ｜ 简体中文（当前文件）
+
 Compositor 是一个面向合成与照片后期的 macOS 图像编辑器，使用 Swift（SwiftUI 与 AppKit，部分像素相关代码用 C）实现。
 
 ## 设计或修改 Compositor 工程

@@ -1,5 +1,7 @@
 # Compositor
 
+> 🌐 **English**：[README.zh-CN.md](README.zh-CN.md) ｜ 简体中文（当前文件）
+
 Adobe Photoshop 太贵，而 GIMP 那类工具的体验又不够贴近 Photoshop，让我的创作流总是被打断。正因如此，我建了 Compositor。
 
 目标是做一个完全免费开源的全功能图像编辑器。我过去一直用 Photoshop 做合成与后期，所以 Compositor 是围绕这条工作流来设计的——一切工具都为能做出像素级精确的成片服务。

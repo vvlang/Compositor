@@ -1,5 +1,7 @@
 # Compositor 工程格式，版本 1–11
 
+> 🌐 **English**：[docs/project-format.zh-CN.md](docs/project-format.zh-CN.md) ｜ 简体中文（当前文件）
+
 `.comp` 文件是一个 macOS document package，里面是 `manifest.json` 和一个 `images/` 目录（装着 `<layer UUID>.png` 资源）。
 
 清单里写入 bundle identifier `com.compositor.project`，新存为版本 `11`（版本 `1`–`10` 仍可读），工作色域为 sRGB。它保存文档 UUID、像素尺寸、当前图层 UUID，以及按从底到顶顺序排列的图层。每个图层保存自己的 UUID、名字、可见性、变换（原点、尺寸、顺时针旋转、翻转、采样方式）以及可选的图片文件名。空白图层没有图片资源。
