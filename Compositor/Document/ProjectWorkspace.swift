@@ -7,13 +7,19 @@ final class ProjectTab: Identifiable {
     let id = UUID()
     let session: EditorSession
     let controller: ProjectController
-    let defaultName: String
-    var title: String { session.projectURL?.deletingPathExtension().lastPathComponent ?? defaultName }
-    init(name: String) {
+    /// 只在没有工程文件时才用作显示回退，从不落盘，所以可以本地化。
+    /// 已保存的工程用的是文件名，标题跟着用户走，不该翻译。
+    let defaultName: String.LocalizationValue
+    var title: String {
+        session.projectURL?.deletingPathExtension().lastPathComponent ?? String(localized: defaultName)
+    }
+    init(name: String.LocalizationValue) {
         defaultName = name
         session = EditorSession()
         controller = ProjectController(session: session)
     }
+    /// 从文件名来的名字是用户的数据，原样保留。
+    convenience init(name: String) { self.init(name: String.LocalizationValue(name)) }
 }
 
 @MainActor @Observable
@@ -38,7 +44,8 @@ final class ProjectWorkspace {
     @discardableResult
     func addTab(reuseEmpty: Bool = true) -> ProjectTab {
         if reuseEmpty, tabs.count == 1, current.session.document == nil { return current }
-        let tab = ProjectTab(name: "Untitled \(nextNumber)")
+        // 转成 String 再插值：Int 会产生 %lld 的键，而目录里的键是 %@。
+        let tab = ProjectTab(name: "Untitled \(String(nextNumber))")
         nextNumber += 1
         tab.controller.workspace = self; tab.controller.window = window
         tabs.append(tab); selectedID = tab.id

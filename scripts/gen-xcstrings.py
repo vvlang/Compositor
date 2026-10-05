@@ -43,6 +43,8 @@ VERBATIM_OK = {
     "Compositor", "sRGB · Transparent", "45°",
     # 中文 macOS 上这几个键名本来就是英文，翻译反而不一致
     "Esc", "Return", "Space", "Tab", "Delete",
+    # 坐标轴标签，字母本身就通用
+    "X", "Y", "°", "R", "G", "B",
 }
 
 # 有些标题是运行时用插值拼出来的("Nudge \(direction) 1 px")。它们同时是
@@ -60,6 +62,7 @@ HELPER_CALLS = [
     "control", "slider", "pointSlider", "colorSlider", "familySlider",
     "sharpenSlider", "opticsSlider", "geometrySlider", "calibrationSlider",
     "amount", "wheel", "modifyControl", "sharpenField", "opticsField",
+    "dimension", "field", "swatch", "eye", "targetButton",
 ]
 
 # 传给这些 helper 的第一个字符串字面量，以及 help: 标签后面的那个。
@@ -88,23 +91,87 @@ def normalize_key(key: str) -> str:
 # L10n 的三个取词函数收 String.LocalizationValue,不是 NSLocalizedString 的签名,
 # 所以 xcstringstool 的 -s 登记不了它们,里面的字面量必须自己扫。
 # 插值一律还原成 %arg —— 本仓库里这些插值全是 String 类型。
-L10N_CALL = re.compile(r'L10n\.(?:string|name|text)\s*\(\s*"((?:[^"\\\n]|\\.)*)"')
-# 插值里可能有嵌套括号，例如 \(foo(bar).baz)。允许一层嵌套就够用了。
+L10N_CALL = re.compile(r"L10n\.(?:string|name|text)\s*\(")
+# 参数里可能出现的字符串字面量。插值 \(…) 在目录里就是 %arg。
+STRING_LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 INTERPOLATION = re.compile(r"\\\((?:[^()\\]|\\.|\([^()]*\))*\)")
 
 
+def _collapse_interpolations(literal: str) -> str:
+    """把 Swift 字符串插值 \\(…) 换成 %arg。
+
+    正则处理不了 \\(Double(x).formatted(.precision(.fractionLength(0...2)))) 这种
+    多层嵌套，所以这里按括号配对扫描。配对不上（说明是残片）就原样返回。
+    """
+    out, i = [], 0
+    while i < len(literal):
+        if literal[i] == "\\" and i + 1 < len(literal) and literal[i + 1] == "(":
+            depth, j = 0, i + 1
+            while j < len(literal):
+                if literal[j] == "(":
+                    depth += 1
+                elif literal[j] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if j >= len(literal):
+                return literal
+            out.append(PLACEHOLDER)
+            i = j + 1
+            continue
+        out.append(literal[i])
+        i += 1
+    return "".join(out)
+
+
+def _balanced_arg(text: str, open_paren: int) -> str | None:
+    """从 '(' 处取到配对的 ')'，返回中间的内容。"""
+    depth, i, in_str = 0, open_paren, False
+    while i < len(text):
+        ch = text[i]
+        if in_str:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_paren + 1:i]
+        i += 1
+    return None
+
+
 def scan_l10n_calls() -> set[str]:
-    """扫出 L10n.string / L10n.name / L10n.text 里传入的字面量键。"""
+    """扫出 L10n.string / L10n.name / L10n.text 的参数里出现的所有字符串字面量。
+
+    参数不一定是单个字面量。三元 `L10n.text(cond ? "A" : "B")` 在运行时查的是
+    A 和 B **两个键**；早先只按「一个引号对」去抓，拿到的是被截断的条件表达式，
+    那两处就一直显示英文 —— 而目录、构建、测试、审计全是绿的，因为键「存在」，
+    只是不是运行时真正查的那个。所以这里按括号配对取整个参数，再把里面所有
+    字面量都收进来。
+    """
     keys: set[str] = set()
     for path in (ROOT / "Compositor").rglob("*.swift"):
         text = path.read_text(encoding="utf-8")
         for m in L10N_CALL.finditer(text):
-            literal = m.group(1)
-            # 插值里又套了 L10n.string(...) 会让引号配对错乱，扫出来的一定是残片。
-            if "L10n." in literal:
+            open_paren = m.end() - 1
+            arg = _balanced_arg(text, open_paren)
+            if arg is None:
                 continue
-            # 字面量里的 \(…) 在目录里就是 %arg
-            keys.add(INTERPOLATION.sub("%arg", literal))
+            for lit in STRING_LITERAL.finditer(arg):
+                raw = lit.group(1)
+                # 嵌套调用（参数里又调了 L10n.string）会扫出半截残片：
+                # 引号配对在嵌套处断掉，剩下的是语法碎片而不是文案。
+                if "L10n." in raw or "\\\\(" in raw or not re.search(r"[A-Za-z一-鿿]", raw):
+                    continue
+                keys.add(_collapse_interpolations(raw))
     return keys
 
 
