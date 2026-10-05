@@ -4,6 +4,9 @@ import Testing
 
 @MainActor
 struct LayerTests {
+    /// 菜单标题会随界面语言变，断言要跟着变，不能拿英文字面量硬比。
+    private func L(_ key: String) -> String { L10n.string(String.LocalizationValue(key)) }
+
     private func sessionWithThreeLayers() -> EditorSession {
         let session = EditorSession()
         session.createDocument(width: 800, height: 600)
@@ -280,7 +283,7 @@ struct LayerTests {
         // Delete
         #expect(titles.contains("Delete Layer"))
         // Mask actions
-        let addMaskItem = try #require(menu.items.first(where: { $0.title == "Add Mask" }))
+        let addMaskItem = try #require(menu.items.first(where: { $0.title == L("Add Mask") }))
         let submenu = try #require(addMaskItem.submenu)
         let subTitles = submenu.items.map(\.title)
         #expect(subTitles.contains("Reveal All (White)"))
@@ -432,9 +435,9 @@ struct LayerTests {
 
         // Without mask:
         var menu = try #require(coordinator.contextMenu(for: 0))
-        let addMaskItem = try #require(menu.items.first { $0.title == "Add Mask" })
+        let addMaskItem = try #require(menu.items.first { $0.title == L("Add Mask") })
         #expect(addMaskItem.isEnabled == true)
-        let deleteMaskItem = try #require(menu.items.first { $0.title == "Delete Mask" })
+        let deleteMaskItem = try #require(menu.items.first { $0.title == L("Delete Mask") })
         #expect(deleteMaskItem.isEnabled == false)
         let toggleMaskItem = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.toggleMaskAction) })
         #expect(toggleMaskItem.isEnabled == false)
@@ -447,12 +450,12 @@ struct LayerTests {
         // With mask (enabled):
         coordinator.update(table)
         menu = try #require(coordinator.contextMenu(for: 0))
-        let addMaskAfter = try #require(menu.items.first { $0.title == "Add Mask" })
+        let addMaskAfter = try #require(menu.items.first { $0.title == L("Add Mask") })
         #expect(addMaskAfter.isEnabled == false)
         let toggleMaskAfter = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.toggleMaskAction) })
         #expect(toggleMaskAfter.isEnabled == true)
-        #expect(toggleMaskAfter.title == "Disable Mask")
-        let deleteMaskAfter = try #require(menu.items.first { $0.title == "Delete Mask" })
+        #expect(toggleMaskAfter.title == L("Disable Mask"))
+        let deleteMaskAfter = try #require(menu.items.first { $0.title == L("Delete Mask") })
         #expect(deleteMaskAfter.isEnabled == true)
 
         // Disable mask
@@ -461,7 +464,7 @@ struct LayerTests {
         coordinator.update(table)
         menu = try #require(coordinator.contextMenu(for: 0))
         let toggleMaskDisabled = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.toggleMaskAction) })
-        #expect(toggleMaskDisabled.title == "Enable Mask")
+        #expect(toggleMaskDisabled.title == L("Enable Mask"))
 
         // Delete mask
         coordinator.deleteMaskAction(nil)
@@ -479,7 +482,7 @@ struct LayerTests {
 
         var menu = try #require(coordinator.contextMenu(for: 0))
         var clippingItem = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.toggleClippingMaskAction) })
-        #expect(clippingItem.title == "Create Clipping Mask")
+        #expect(clippingItem.title == L("Create Clipping Mask"))
         #expect(clippingItem.isEnabled == true)
 
         // Create clipping mask
@@ -490,7 +493,7 @@ struct LayerTests {
         coordinator.update(table)
         menu = try #require(coordinator.contextMenu(for: 0))
         clippingItem = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.toggleClippingMaskAction) })
-        #expect(clippingItem.title == "Release Clipping Mask")
+        #expect(clippingItem.title == L("Release Clipping Mask"))
         #expect(clippingItem.isEnabled == true)
 
         // Release clipping mask
@@ -509,7 +512,7 @@ struct LayerTests {
         var menu = try #require(coordinator.contextMenu(for: 0))
         var mergeItem = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.mergeLayersAction) })
         #expect(mergeItem.title == session.mergeTitle)
-        #expect(mergeItem.title == "Merge Down")
+        #expect(mergeItem.title == L("Merge Down"))
         #expect(mergeItem.isEnabled == session.canMergeLayers)
 
         // Multi-selection: "Merge Layers"
@@ -518,7 +521,7 @@ struct LayerTests {
         menu = try #require(coordinator.contextMenu(for: 0))
         mergeItem = try #require(menu.items.first { $0.action == #selector(NativeLayerList.Coordinator.mergeLayersAction) })
         #expect(mergeItem.title == session.mergeTitle)
-        #expect(mergeItem.title == "Merge Layers")
+        #expect(mergeItem.title == L("Merge Layers"))
         #expect(mergeItem.isEnabled == session.canMergeLayers)
 
         // Execute merge

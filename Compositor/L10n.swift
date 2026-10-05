@@ -190,6 +190,12 @@ extension CameraRawScopeMode {
     var localizedName: String { L10n.name(rawValue) }
 }
 
+extension CameraRawMixerSettings {
+    /// 八个色彩家族名按色相顺序排布，`names` 与 `centers` 是一一对应的定长表，
+    /// 所以下标就是身份；只有显示时才取词。
+    static func localizedName(at index: Int) -> String { L10n.name(names[index]) }
+}
+
 /// `rawValue` 是 Int，标题另存在一个数组里，所以这里要按 case 取词。
 extension WandSampleSize {
     var localizedName: String {

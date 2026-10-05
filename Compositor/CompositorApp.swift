@@ -5,6 +5,14 @@ import Sparkle
 struct CompositorApp: App {
     @NSApplicationDelegateAdaptor(CompositorApplicationDelegate.self) private var applicationDelegate
     private var session: EditorSession { applicationDelegate.session }
+
+    /// 「删除」针对什么，取决于当前选中的是效果、蒙版还是图层。原先是一行四层三元，
+    /// 拆出来是为了让每一句都能单独进目录 —— 中文语序和英文不同，合成一句就没法重排了。
+    private var deleteLayerTitle: String {
+        if let effect = session.selectedEffect { return L10n.string("Delete \(effect.kind.localizedName)") }
+        if session.isMaskSelected, session.activeLayer?.mask != nil { return L10n.string("Delete Layer Mask") }
+        return session.selectedLayerIDs.count > 1 ? L10n.string("Delete Layers") : L10n.string("Delete Layer")
+    }
     var body: some Scene {
         Window("Compositor", id: "editor") {
             ProjectWorkspaceView(applicationDelegate: applicationDelegate).roundedControls()
@@ -38,9 +46,23 @@ struct CompositorApp: App {
                         }
                             .configuredKeyboardShortcut("z", modifiers: [.command, .shift])
                     } else {
-                        Button(session.history.canUndo ? "Undo \(session.history.undoName)" : "Undo") { session.undo() }
+                        // 三元表达式在 Swift 里只能是 String，拿不到 LocalizedStringKey，
+                        // 所以这里用 label 闭包显式取词。
+                        Button {
+                            session.undo()
+                        } label: {
+                            Text(verbatim: session.history.canUndo
+                                 ? L10n.string("Undo \(session.history.undoName)")
+                                 : L10n.string("Undo"))
+                        }
                             .configuredKeyboardShortcut("z").disabled(!session.canUndo)
-                        Button(session.history.canRedo ? "Redo \(session.history.redoName)" : "Redo") { session.redo() }
+                        Button {
+                            session.redo()
+                        } label: {
+                            Text(verbatim: session.history.canRedo
+                                 ? L10n.string("Redo \(session.history.redoName)")
+                                 : L10n.string("Redo"))
+                        }
                             .configuredKeyboardShortcut("z", modifiers: [.command, .shift]).disabled(!session.canRedo)
                     }
                 }
@@ -257,10 +279,12 @@ struct CompositorApp: App {
                     Button("Hue/Saturation…") { session.beginHueSaturation() }
                         .configuredKeyboardShortcut("u").disabled(!session.canAdjustColors)
                     ForEach([FilterKind.blackWhite, .colorBalance, .exposure, .gradientMap, .grain], id: \.self) { kind in
-                        Button("\(kind.rawValue)…") { session.beginFilter(kind) }
+                        Button { session.beginFilter(kind) } label: { Text(verbatim: kind.localizedName + "…") }
                             .disabled(!session.canAdjustColors || session.hueSaturation != nil)
                     }
-                    Button(session.isMaskSelected ? "Invert Mask" : "Invert") { Task { await session.invertPixels() } }
+                    Button { Task { await session.invertPixels() } } label: {
+                        Text(verbatim: session.isMaskSelected ? L10n.string("Invert Mask") : L10n.string("Invert"))
+                    }
                         .configuredKeyboardShortcut("i")
                         .disabled(!session.canInvert)
                     Divider()
@@ -282,27 +306,36 @@ struct CompositorApp: App {
                 }
                 CommandMenu("Filter") {
                     ForEach(FilterKind.allCases.filter { $0 != .contentAwareFill && !$0.isImageAdjustment }, id: \.self) { kind in
-                        Button("\(kind.rawValue)…") { session.beginFilter(kind) }
+                        Button { session.beginFilter(kind) } label: { Text(verbatim: kind.localizedName + "…") }
                             .disabled(!(kind == .vignette ? session.canVignette : session.canAdjustColors) || session.hueSaturation != nil)
                     }
                 }
                 CommandMenu("Layer") {
                     Menu("New Adjustment Layer") {
                         ForEach(AdjustmentKind.allCases, id: \.self) { kind in
-                            Button(kind.rawValue + (kind.isEditable ? "…" : "")) { session.addAdjustment(kind) }
+                            Button { session.addAdjustment(kind) } label: {
+                                Text(verbatim: kind.localizedName + (kind.isEditable ? "…" : ""))
+                            }
                         }
                     }.disabled(!session.canEditLayers || session.document == nil)
                     Button("Edit Adjustment…") {
                         session.adjustmentEditingID = session.activeLayerID
                     }.disabled(!session.canEditLayers || session.activeLayer?.adjustment == nil)
                     Divider()
-                    Button(session.canTransformSelection ? "Transform Selection" : "Transform Layer") { session.transformCommand() }
+                    Button { session.transformCommand() } label: {
+                        Text(verbatim: session.canTransformSelection
+                             ? L10n.string("Transform Selection") : L10n.string("Transform Layer"))
+                    }
                         .configuredKeyboardShortcut("t").disabled(!session.canTransform && !session.canTransformSelection)
-                    Button(session.selection == nil ? "Duplicate Layer" : "Layer via Copy") { session.layerViaCopy() }
+                    Button { session.layerViaCopy() } label: {
+                        Text(verbatim: session.selection == nil
+                             ? L10n.string("Duplicate Layer") : L10n.string("Layer via Copy"))
+                    }
                         .configuredKeyboardShortcut("j").disabled(!session.canCopyPixels && !(session.selection == nil && session.canEditLayers && session.activeLayer != nil))
                     Divider()
-                    Button(session.activeLayer?.maskSourceID == nil ? "Create Clipping Mask" : "Release Clipping Mask") {
-                        if let id = session.activeLayerID { session.toggleClippingMask(id) }
+                    Button { if let id = session.activeLayerID { session.toggleClippingMask(id) } } label: {
+                        Text(verbatim: session.activeLayer?.maskSourceID == nil
+                             ? L10n.string("Create Clipping Mask") : L10n.string("Release Clipping Mask"))
                     }
                     .configuredKeyboardShortcut("g", modifiers: [.command, .option])
                     .disabled(session.activeLayerID.map { !session.canToggleClippingMask($0) } ?? true)
@@ -317,8 +350,9 @@ struct CompositorApp: App {
                         .configuredKeyboardShortcut("n", modifiers: [.command, .shift]).disabled(!session.canEditLayers)
                     Button("Rename Layer…") { session.renamingLayerID = session.activeLayerID }
                         .disabled(!session.canEditLayers || session.activeLayer == nil)
-                    Button(session.activeLayer?.isVisible == false ? "Show Layer" : "Hide Layer") {
-                        if let id = session.activeLayerID { session.toggleLayerVisibility(id) }
+                    Button { if let id = session.activeLayerID { session.toggleLayerVisibility(id) } } label: {
+                        Text(verbatim: session.activeLayer?.isVisible == false
+                             ? L10n.string("Show Layer") : L10n.string("Hide Layer"))
                     }.disabled(!session.canEditLayers || session.activeLayer == nil)
                     Divider()
                     Button("Move Layer Up") { session.moveActiveLayer(by: 1) }
@@ -326,7 +360,7 @@ struct CompositorApp: App {
                     Button("Move Layer Down") { session.moveActiveLayer(by: -1) }
                         .configuredKeyboardShortcut("[").disabled(!session.canMoveActiveLayer(by: -1))
                     Group {
-                        Button(session.mergeTitle) { session.mergeLayers() }
+                        Button { session.mergeLayers() } label: { Text(verbatim: session.mergeTitle) }
                             .configuredKeyboardShortcut("e").disabled(!session.canMergeLayers)
                         Divider()
                         Button("Flip Layer Horizontal") { session.flipLayers(horizontally: true) }
@@ -335,8 +369,8 @@ struct CompositorApp: App {
                             .disabled(!session.canTransform)
                     }
                     Divider()
-                    Button(session.selectedEffect != nil ? "Delete " + session.selectedEffect!.kind.rawValue : session.isMaskSelected && session.activeLayer?.mask != nil ? "Delete Layer Mask" : session.selectedLayerIDs.count > 1 ? "Delete Layers" : "Delete Layer") {
-                        session.deleteLayerOrMask()
+                    Button { session.deleteLayerOrMask() } label: {
+                        Text(verbatim: deleteLayerTitle)
                     }
                         .disabled(!session.canEditLayers || session.activeLayer == nil)
                 }
