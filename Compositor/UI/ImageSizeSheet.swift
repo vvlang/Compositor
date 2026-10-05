@@ -155,7 +155,7 @@ struct ImageSizeSheet: View {
                 Text("Only print dimensions and resolution change. Pixels stay unchanged.")
                     .font(.callout).foregroundStyle(.secondary)
             }
-            Text(valid ? "Result: \(Int(width.rounded())) × \(Int(height.rounded())) pixels" : "Use 1–\(DocumentLimits.maxSide.formatted()) pixels per side, up to \(DocumentLimits.maxSurfaceMegapixels) megapixels, and 1–9,600 pixels/inch.")
+            L10n.text(valid ? "Result: \(Int(width.rounded())) × \(Int(height.rounded())) pixels" : "Use 1–\(DocumentLimits.maxSide.formatted()) pixels per side, up to \(DocumentLimits.maxSurfaceMegapixels) megapixels, and 1–9,600 pixels/inch.")
                 .foregroundStyle(valid ? Color.secondary : Color.orange).font(.callout)
             HStack {
                 Button("Cancel") { finish(nil) }.configuredNativeShortcut(.escape)

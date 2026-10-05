@@ -278,7 +278,7 @@ struct CameraRawTests {
         session.updateFilter(editSettings, preview: true)
         count = session.history.undoCount
         await session.commitFilter()
-        #expect(session.history.undoCount == count + 1 && session.history.undoName == "Camera Raw Filter")
+        #expect(session.history.undoCount == count + 1 && session.history.undoName == L10n.string("Camera Raw Filter"))
         let baked = try pixels(try #require(session.activeLayer?.asset?.image))[0]
         #expect(abs(baked[0] - 176) <= 2, "OK bakes the grade: \(baked)")
     }

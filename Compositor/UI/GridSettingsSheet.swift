@@ -89,7 +89,7 @@ struct GridSettingsSheet: View {
                     .scrubbable(sensitivity: 0.2, value: $subdivisions, range: LayoutGrid.subdivisionRange)
                 TextField("Subdivisions", value: $subdivisions, format: .number)
             }
-            Text(valid ? "A subdivision every \(Double(grid.step).formatted(.number.precision(.fractionLength(0...2)))) pixels."
+            L10n.text(valid ? "A subdivision every \(Double(grid.step).formatted(.number.precision(.fractionLength(0...2)))) pixels."
                        : "Use gridlines every \(LayoutGrid.spacingRange.lowerBound)–\(LayoutGrid.spacingRange.upperBound.formatted()) pixels and \(LayoutGrid.subdivisionRange.lowerBound)–\(LayoutGrid.subdivisionRange.upperBound) subdivisions, no more than the pixels between gridlines.")
                 .foregroundStyle(valid ? Color.secondary : Color.orange).font(.callout)
                 .fixedSize(horizontal: false, vertical: true)

@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -30,17 +31,135 @@ TARGET_LANG = "zh-Hans"
 # 提取器会顺带收进来的非文案键(单位符号、占位符)。留着无害,但会污染目录。
 JUNK_KEYS = {"", "#", "%"}
 
+# 译文与原文相同是正常的这些:单位、颜色模式缩写、算法名、品牌名。
+# 它们不是"漏翻",所以从"译文与原文相同"的告警里排除。
+VERBATIM_OK = {
+    "%@", "%@%%", "%@ × %@ px", "%@ × %@ px · sRGB", "%@°  %@",
+    "100%", "px", "pixels", "pixels/inch",
+    "RGB", "HSL", "ASCII",
+    "Bayer 2 × 2", "Bayer 4 × 4", "Bayer 8 × 8", "Floyd–Steinberg",
+    "Atkinson (Classic Mac)", "Scanlines (CRT)", "Halftone Dots", "Halftone Lines",
+    "Halftone Diamonds", "Mac Patterns",
+    "Compositor", "sRGB · Transparent", "45°",
+    # 中文 macOS 上这几个键名本来就是英文，翻译反而不一致
+    "Esc", "Return", "Space", "Tab", "Delete",
+}
+
+# 有些标题是运行时用插值拼出来的("Nudge \(direction) 1 px")。它们同时是
+# ShortcutDefinition.id 的一部分,所以必须保持英文,也必须逐个展开成完整短语——
+# 目录里不可能有一个叫 "Nudge %@ 1 px" 的键,因为运行时会先填进 "Left" 再查表。
+LAYER_EFFECT_KINDS = ["Stroke", "Drop Shadow", "Color Overlay", "Inner Shadow", "Outer Glow", "Inner Glow"]
+ADJUSTMENT_KINDS = ["Hue/Saturation", "Levels", "Curves", "Exposure", "Gradient Map", "Grain",
+                    "Add Noise", "Gaussian Blur", "Motion Blur", "Invert", "Black & White", "Color Balance"]
+DIRECTIONS = ["Left", "Right", "Up", "Down"]
+
+# 这些是 UI/ 里的私有 helper，形参类型是 String.LocalizationValue —— 它们不是
+# 苹果已知的本地化 API，xcstringstool 认不出来，所以调用点的字面量要单独扫。
+# 形参一律是第一个位置参数。
+HELPER_CALLS = [
+    "control", "slider", "pointSlider", "colorSlider", "familySlider",
+    "sharpenSlider", "opticsSlider", "geometrySlider", "calibrationSlider",
+    "amount", "wheel", "modifyControl", "sharpenField", "opticsField",
+]
+
+# 传给这些 helper 的第一个字符串字面量，以及 help: 标签后面的那个。
+HELPER_LITERAL = re.compile(
+    r"\b(" + "|".join(HELPER_CALLS) + r")\s*\(\s*\"((?:[^\"\\\n]|\\.)*)\""
+    r"|help:\s*\"((?:[^\"\\\n]|\\.)*)\""
+)
+
+
+# xcstringstool 提取出来的插值占位符是 %arg,但那是给「可移植」用的中间形式:
+# 实测 xcstringstool compile 不会把它转成运行时真正查找的形态,而
+# String(localized:) 在运行时查的是字面的 %@。substitutions 里的 formatSpecifier
+# 只影响译文一侧,不影响键。
+#
+# 所以目录里的键和译文都必须用 %@。这行是全部 920 个键里最容易静默出错的地方:
+# 键对不上时 String(localized:) 不会报错,只是原样返回英文。
+PLACEHOLDER = "%arg"
+RUNTIME_PLACEHOLDER = "%@"
+
+
+def normalize_key(key: str) -> str:
+    """把可移植的 %arg 换成运行时真正查找的 %@。"""
+    return key.replace(PLACEHOLDER, RUNTIME_PLACEHOLDER)
+
+
+# L10n 的三个取词函数收 String.LocalizationValue,不是 NSLocalizedString 的签名,
+# 所以 xcstringstool 的 -s 登记不了它们,里面的字面量必须自己扫。
+# 插值一律还原成 %arg —— 本仓库里这些插值全是 String 类型。
+L10N_CALL = re.compile(r'L10n\.(?:string|name|text)\s*\(\s*"((?:[^"\\\n]|\\.)*)"')
+# 插值里可能有嵌套括号，例如 \(foo(bar).baz)。允许一层嵌套就够用了。
+INTERPOLATION = re.compile(r"\\\((?:[^()\\]|\\.|\([^()]*\))*\)")
+
+
+def scan_l10n_calls() -> set[str]:
+    """扫出 L10n.string / L10n.name / L10n.text 里传入的字面量键。"""
+    keys: set[str] = set()
+    for path in (ROOT / "Compositor").rglob("*.swift"):
+        text = path.read_text(encoding="utf-8")
+        for m in L10N_CALL.finditer(text):
+            literal = m.group(1)
+            # 插值里又套了 L10n.string(...) 会让引号配对错乱，扫出来的一定是残片。
+            if "L10n." in literal:
+                continue
+            # 字面量里的 \(…) 在目录里就是 %arg
+            keys.add(INTERPOLATION.sub("%arg", literal))
+    return keys
+
+
+def scan_helper_calls() -> set[str]:
+    """扫出传给 helper 的标题字面量，以及形参位置上直接给的 help 文案。"""
+    keys: set[str] = set()
+    for path in (ROOT / "Compositor").rglob("*.swift"):
+        text = path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if line.strip().startswith("//"):
+                continue
+            for m in HELPER_LITERAL.finditer(line):
+                literal = m.group(2) or m.group(3)
+                if literal and ("(" not in literal or literal.startswith(".")):
+                    keys.add(literal)
+    return keys
+
+
+def derived_keys() -> set[str]:
+    """补上那些源码里靠插值拼出来、但提取器拼不出完整键的标题。
+
+    两种情况必须分开：
+
+    - 撤销步骤名走 `beginEdit(_ name: String.LocalizationValue)`，插值在查表之前
+      就折叠成了占位符，运行时查的是 `Edit %arg Adjustment` 这种**模板键**，
+      不是拼好的整句。
+    - 快捷键标题先用英文片段拼成完整的 `title`（它同时是 UserDefaults 里的
+      存储键，必须保持英文），之后才拿整句查表，所以这里要的是**具体短语**。
+    """
+    keys: set[str] = set()
+    for verb in ["Add", "Cancel", "Edit", "Copy", "Hide", "Show", "Remove"]:
+        keys.add(f"{verb} %arg")
+    keys |= {"New %arg Adjustment", "Edit %arg Adjustment"}
+    for d in DIRECTIONS:
+        keys |= {f"Nudge {d} 1 px", f"Nudge {d} 10 px",
+                 f"Move selected pixels {d} 1 px", f"Move selected pixels {d} 10 px"}
+    keys |= {f"Opacity digit {n} (type two for exact %)" for n in range(10)}
+    return keys
+
 
 def swift_sources() -> list[str]:
     return sorted(str(p) for p in (ROOT / "Compositor").rglob("*.swift"))
 
 
 def extract_base_keys() -> set[str]:
-    """跑 xcstringstool,返回源码里能自动提取到的键。"""
+    """跑 xcstringstool,返回源码里能自动提取到的键。
+
+    L10n 的三个取词函数是我们自己的包装,苹果不认识,必须用 -s 登记,
+    否则里面所有的字面量都会被漏掉(而且不会报错,只是静默查不到表)。
+    """
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(
             ["xcrun", "xcstringstool", "extract",
              "--SwiftUI", "--modern-localizable-strings",
+             "-s", "L10n.string", "-s", "L10n.name", "-s", "L10n.text",
              "--output-format", "xcstrings",
              "--output-directory", tmp, *swift_sources()],
             cwd=ROOT, check=True, capture_output=True, text=True,
@@ -57,24 +176,33 @@ def load_json(name: str) -> dict:
 
 
 def build() -> tuple[dict, dict, set[str]]:
-    base = extract_base_keys()
+    base = {normalize_key(k) for k in extract_base_keys()}
     curated = load_json("curated.json")        # 提取器看不见的键
-    translations = load_json("translations.json")
+    # 带 _ 前缀的是分组注释，不是键
+    translations = {k: v for k, v in load_json("translations.json").items()
+                    if not k.startswith("_")}
 
-    keys = (base | set(curated)) - JUNK_KEYS
+    # curated.json 里带 _ 前缀的是分组注释,不是键
+    curated_keys = {normalize_key(k) for k in curated if not k.startswith("_")}
+    keys = (base | curated_keys | {normalize_key(k) for k in derived_keys()}
+            | {normalize_key(k) for k in scan_l10n_calls()}
+            | {normalize_key(k) for k in scan_helper_calls()}) - JUNK_KEYS
+    # 译文里的占位符同样要规范化,否则值会带着 %arg 上线
+    translations = {normalize_key(k): normalize_key(v) for k, v in translations.items()}
     strings: dict[str, dict] = {}
     for key in sorted(keys):
-        entry: dict = {"extractionState": "manual"}
+        # 带占位符的键标成 extracted：符号生成器无法为 %@ 推断 Swift 类型，
+        # 标成 manual 会让构建报错。这些键都确实来自源码里的插值字面量。
+        # 其余键保持 manual，免得用户在 Xcode 里跑一次「提取本地化字符串」
+        # 就把 curated 里的枚举 rawValue 之类（源码中并非字面量）删掉。
+        entry: dict = {"extractionState": "extracted" if RUNTIME_PLACEHOLDER in key else "manual"}
         zh = translations.get(key)
-        if zh:
-            entry["localizations"] = {
-                TARGET_LANG: {"stringUnit": {"state": "translated", "value": zh}}
-            }
-        else:
-            # 未翻译时显式标记,避免 Xcode 误以为漏了提取
-            entry["localizations"] = {
-                TARGET_LANG: {"stringUnit": {"state": "needs_review"}}
-            }
+        # 未翻译时回退成键本身：state 是 needs_review，但 value 必须存在，
+        # 否则 xcstringstool compile 会报 "Missing required key 'value'" 而构建失败。
+        entry["localizations"] = {
+            TARGET_LANG: {"stringUnit": {"state": "translated" if zh else "needs_review",
+                                         "value": zh or key}}
+        }
         strings[key] = entry
 
     return {"sourceLanguage": SOURCE_LANG, "strings": strings, "version": "1.0"}, translations, base
@@ -102,7 +230,29 @@ def report(catalog: dict, translations: dict, base: set[str]) -> int:
         print(f"\n译文中有多余键（可能拼错了）: {len(unused)}")
         for k in unused[:20]:
             print("   ", repr(k))
-    return 1 if untranslated else 0
+
+    # 两类人眼很难发现的错误：
+    # 1. 译文丢了格式符 —— 界面上会显示 "%arg" 或直接崩。
+    # 2. 译文和原文一模一样 —— 说明查表根本没命中，只是碰巧没报错。
+    spec = re.compile(r"%@|%arg|%%")
+    mismatched, selfsame = [], []
+    for key, value in translations.items():
+        if key not in keys:
+            continue
+        if sorted(spec.findall(key)) != sorted(spec.findall(value)):
+            mismatched.append(key)
+        if value == key and re.search(r"[A-Za-z]", key) and key not in VERBATIM_OK:
+            selfsame.append(key)
+    if mismatched:
+        print(f"\n⚠ 格式符不匹配: {len(mismatched)}")
+        for k in mismatched[:20]:
+            print("   ", repr(k))
+    if selfsame:
+        print(f"\n⚠ 译文与原文相同（查表可能没命中）: {len(selfsame)}")
+        for k in selfsame[:20]:
+            print("   ", repr(k))
+
+    return 1 if (untranslated or mismatched or selfsame) else 0
 
 
 def main() -> int:

@@ -8,7 +8,7 @@ struct TransformInspector: View {
     }
     var body: some View {
         HStack(spacing: 12) {
-          Text(session.transformTargetsMask ? "Transform Mask" : "Transform").font(ToolHeaderStyle.titleFont)
+          L10n.text(session.transformTargetsMask ? "Transform Mask" : "Transform").font(ToolHeaderStyle.titleFont)
               .padding(.leading, 18)
           // Command flips Auto Select while it's held, and the box shows it flipped (see HeldModifiers).
           Toggle("Auto Select", isOn: Binding(get: { session.transformAutoSelect != held.contains(.command) },

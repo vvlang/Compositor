@@ -51,7 +51,7 @@ struct NewCanvasSheet: View {
                 Image(systemName: "multiply").foregroundStyle(.tertiary).padding(.top, 20)
                 dimension("Height", text: $height, field: .height)
             }
-            Text(valid ? "Transparent canvas · sRGB" : "Enter whole numbers from 1 to \(DocumentLimits.maxSide.formatted()) pixels.")
+            L10n.text(valid ? "Transparent canvas · sRGB" : "Enter whole numbers from 1 to \(DocumentLimits.maxSide.formatted()) pixels.")
                 .font(.callout).foregroundStyle(valid ? Color.secondary : Color.orange)
             HStack(spacing: 10) {
                 Button("Open project") { onOpen?() }.buttonStyle(.bordered)

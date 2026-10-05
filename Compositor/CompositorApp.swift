@@ -314,7 +314,7 @@ struct CompositorApp: App {
                     Menu("New Adjustment Layer") {
                         ForEach(AdjustmentKind.allCases, id: \.self) { kind in
                             Button { session.addAdjustment(kind) } label: {
-                                Text(verbatim: kind.localizedName + (kind.isEditable ? "…" : ""))
+                                Text(verbatim: kind.localizedName + (kind.isEditable ? L10n.string("…") : ""))
                             }
                         }
                     }.disabled(!session.canEditLayers || session.document == nil)

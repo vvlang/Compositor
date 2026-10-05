@@ -982,7 +982,7 @@ private final class LayerCell: NSTableCellView, NSTextFieldDelegate {
             dimensions.toolTip = "Clipping mask based on \(sourceName). Option-click the bottom of its row to release."
         } else { dimensions.toolTip = nil }
         eye.image = NSImage(systemSymbolName: layer.isVisible ? "eye" : "eye.slash", accessibilityDescription: nil)
-        eye.setAccessibilityLabel("\(layer.isVisible ? "Hide" : "Show") \(layer.name)")
+        eye.setAccessibilityLabel(L10n.string(layer.isVisible ? "Hide \(layer.name)" : "Show \(layer.name)"))
         eye.isEnabled = enabled
         eye.layerID = layer.id
         eye.session = session
@@ -1146,7 +1146,7 @@ private final class LayerEffectRow: NSView, NSDraggingSource {
         eye.contentTintColor = .secondaryLabelColor
         eye.target = self; eye.action = #selector(toggle)
         eye.isEnabled = session.canEditLayers
-        eye.setAccessibilityLabel((enabled ? "Hide " : "Show ") + kind.rawValue)
+        eye.setAccessibilityLabel(L10n.string(enabled ? "Hide \(kind.localizedName)" : "Show \(kind.localizedName)"))
         label.font = .systemFont(ofSize: 11)
         label.textColor = enabled ? .labelColor : .secondaryLabelColor
         label.lineBreakMode = .byTruncatingTail

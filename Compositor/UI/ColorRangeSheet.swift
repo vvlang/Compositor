@@ -20,7 +20,7 @@ struct ColorRangeSheet: View {
                 Spacer()
             }
             preview
-            Text(edit?.hasColors == true ? "Shift-click adds a color, Option-click takes one away."
+            L10n.text(edit?.hasColors == true ? "Shift-click adds a color, Option-click takes one away."
                                          : "Click the image to pick the color to select.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack(spacing: 10) {

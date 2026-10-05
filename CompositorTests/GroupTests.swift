@@ -139,7 +139,7 @@ struct GroupTests {
         #expect(order.firstIndex(of: childB)! < order.firstIndex(of: above)!)
         #expect(session.selectedLayerIDs == [childA, childB])
         #expect(session.history.undoCount == undoCount + 1)
-        #expect(session.history.undoName == "Ungroup Layers")
+        #expect(session.history.undoName == L10n.string("Ungroup Layers"))
 
         session.undo()
         #expect(session.document?.layers.first { $0.id == childA }?.parentID == group)

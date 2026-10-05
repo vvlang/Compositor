@@ -5,7 +5,7 @@ struct LassoControls: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(session.tool == .marquee ? "Marquee" : session.tool == .wand ? "Magic" : "Lasso").font(ToolHeaderStyle.titleFont)
+            L10n.text(session.tool == .marquee ? "Marquee" : session.tool == .wand ? "Magic" : "Lasso").font(ToolHeaderStyle.titleFont)
             if session.tool == .marquee {
                 Picker("Shape", selection: Binding(get: { session.marqueeKind }, set: { kind in
                     session.cancelLasso()
@@ -48,7 +48,7 @@ struct LassoControls: View {
             // Rectangles snap to whole pixels, so smoothing doesn't apply (as in Photoshop); ellipses curve.
             if session.tool == .lasso || session.tool == .wand || (session.tool == .marquee && session.marqueeKind == .ellipse) {
                 Toggle("Anti-alias", isOn: $session.selectionAntialiased)
-                    .help(session.tool == .wand && session.wandMode == .object ? "Smooth the detected object outline; turn off for the raw pixel mask" : "Smooth selection edges; turn off for hard pixel edges")
+                    .help(L10n.text(session.tool == .wand && session.wandMode == .object ? "Smooth the detected object outline; turn off for the raw pixel mask" : "Smooth selection edges; turn off for hard pixel edges"))
             }
             Divider().frame(height: 18)
             modifyControl("Expand", amount: $session.selectionExpandAmount) {
@@ -138,10 +138,11 @@ struct LassoControls: View {
     }
 
     /// A button plus its pixel amount (1–500, default 1); both disabled without a selection.
-    private func modifyControl(_ title: String, amount: Binding<Int>, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 5) {
-            Button(title, action: action)
-            TextField(title, value: Binding(get: { amount.wrappedValue },
+    private func modifyControl(_ title: String.LocalizationValue, amount: Binding<Int>, action: @escaping () -> Void) -> some View {
+        let label = String(localized: title)
+        return HStack(spacing: 5) {
+            Button(label, action: action)
+            TextField(label, value: Binding(get: { amount.wrappedValue },
                                             set: { amount.wrappedValue = min(500, max(1, $0)) }),
                       format: .number)
                 .frame(width: 40).textFieldStyle(.roundedBorder)
@@ -151,7 +152,7 @@ struct LassoControls: View {
                 .unitSuffix("px", scrubValue: amount, sensitivity: 1, range: 1...500)
         }
         .disabled(!session.canModifySelection)
-        .help("\(title) the selection by this many pixels")
+        .help(Text(String(localized: "\(label) the selection by this many pixels")))
     }
 }
 

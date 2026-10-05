@@ -72,7 +72,7 @@ struct LevelsSheet: View {
                 Spacer()
                 Button("Reset") { edit?.sampleMode = nil; update { $0 = LevelsSettings() } }
             }
-            Text(session.adjustmentOriginal != nil ? "Underlying pixels · alpha-weighted histogram" : session.selection == nil ? "Original pixels · alpha-weighted histogram" : "Original pixels · selection and alpha-weighted histogram")
+            L10n.text(session.adjustmentOriginal != nil ? "Underlying pixels · alpha-weighted histogram" : session.selection == nil ? "Original pixels · alpha-weighted histogram" : "Original pixels · selection and alpha-weighted histogram")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
             HStack {
@@ -86,12 +86,15 @@ struct LevelsSheet: View {
         .padding(24).frame(width: 440).fixedSize()
         .disabled(edit?.committing == true)
     }
+    /// `name` 保持英文：它既决定数值范围（Gamma 是 0.1–9.99，其余是 0–255），
+    /// 又拼成 UI 测试用的辅助功能标识符。显示时才取词。
     private func field(_ name: String, _ binding: Binding<Double>, decimals: Int) -> some View {
         let range: ClosedRange<Double> = name == "Gamma" ? 0.1...9.99 : 0...255
+        let label = L10n.name(name)
         return VStack(alignment: .leading, spacing: 5) {
-            Text(name).font(.caption).foregroundStyle(.secondary)
+            Text(verbatim: label).font(.caption).foregroundStyle(.secondary)
                 .scrubbable(sensitivity: decimals == 0 ? 1 : 0.01, value: binding, range: range)
-            TextField(name, value: binding, format: .number.precision(.fractionLength(decimals)))
+            TextField(label, value: binding, format: .number.precision(.fractionLength(decimals)))
                 .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 80)
                 .accessibilityIdentifier("levels\(name.replacingOccurrences(of: " ", with: ""))")
         }
