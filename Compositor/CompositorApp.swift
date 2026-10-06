@@ -179,7 +179,15 @@ struct CompositorApp: App {
                     }
                     // ⌘H toggles the Move tool's transform controls instead of hiding the app, so Hide keeps its
                     // place in the app menu without the shortcut.
-                    CommandGroup(replacing: .appVisibility) {
+                    // 上游没做 help book，系统自动生成的那条「Compositor 帮助」点了毫无反应，
+                // 所以整个换掉，换成三个点得动的入口。
+                CommandGroup(replacing: .help) {
+                    Button("User Guide") { HelpMenu.openGuide() }
+                    Divider()
+                    Button("Compositor Website") { HelpMenu.openUpstreamSite() }
+                    Button("Report an Issue") { HelpMenu.openIssueTracker() }
+                }
+                CommandGroup(replacing: .appVisibility) {
                         Button("Hide Compositor") { NSApp.hide(nil) }
                         Button("Hide Others") { NSApp.hideOtherApplications(nil) }
                             .configuredKeyboardShortcut("h", modifiers: [.command, .option])

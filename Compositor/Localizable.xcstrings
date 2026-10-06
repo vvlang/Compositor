@@ -1728,6 +1728,17 @@
         }
       }
     },
+    "Compositor Website": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compositor 官网"
+          }
+        }
+      }
+    },
     "Compositor will convert these Photoshop features. Nothing is applied until you continue.": {
       "extractionState": "manual",
       "localizations": {
@@ -7701,6 +7712,17 @@
         }
       }
     },
+    "Report an Issue": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反馈问题"
+          }
+        }
+      }
+    },
     "Resample": {
       "extractionState": "manual",
       "localizations": {
@@ -9688,6 +9710,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "网格线间距 %@–%@ 像素，分段 %@–%@ 段，且不超过网格线之间的像素数。"
+          }
+        }
+      }
+    },
+    "User Guide": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用说明"
           }
         }
       }
