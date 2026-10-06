@@ -200,12 +200,33 @@ b6250d3  route display sites through the catalog
 ba82f1d  localize the interface in Simplified Chinese         ← 主体
 dc2ddca  catch the strings the first pass missed
 15786f8  translate documentation to Simplified Chinese
-7cc5742 … 6093a21  translate comments (part 1–5 of 5)          ← 可独立丢弃
-b79ae1b  build: add ad-hoc DMG packaging script
 ```
 
-其中**注释汉化那 5 个提交**只改注释、不动任何代码。若上游不希望维护这份翻译，
-可以只取前 6 个提交；反过来，若想整体撤掉注释汉化，`git revert 7cc5742^..6093a21` 即可。
+注释汉化**不在 `main` 上**，单独放在 `l10n-comments` 分支：它把 10 个核心文件的
+注释翻成中文，覆盖的恰好是最容易与上游打架的那几个（`EditorCanvas.swift` 一个
+就 677 行），功能价值却为零。留在主线里只会让每次同步上游的冲突面成倍放大。
+需要完整版时 `git merge l10n-comments` 合回来即可，不想要就永远不用管。
+
+### 同步上游新版本
+
+```sh
+git fetch upstream
+git checkout -b sync/1.5.0 upstream/main
+git rebase sync/1.5.0 main
+
+# 解完冲突后必跑这两条 —— 上游新增的英文文案在 catalog 里没有对应键时，
+# SwiftUI 会静默显示英文原文，不报错，只有审计脚本查得出来：
+python3 scripts/gen-xcstrings.py       # 扫源码，把新键加进 catalog
+bash    scripts/audit-localization.sh   # 列出漏翻的文案
+
+xcodebuild -project Compositor.xcodeproj -scheme Compositor \
+           -destination 'platform=macOS' test
+```
+
+仓库已开启 `rerere`：解过的冲突会被记住，下次上游改动相似时自动复用解法。
+`upstream` 被配置为**只读** remote（push 地址指向 `DISABLED://`），结构上杜绝误推
+上游——要推只推 `origin`。
+
 
 ## 发布
 

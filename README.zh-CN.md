@@ -210,13 +210,36 @@ b6250d3  route display sites through the catalog
 ba82f1d  localize the interface in Simplified Chinese         ← the bulk of the work
 dc2ddca  catch the strings the first pass missed
 15786f8  translate documentation to Simplified Chinese
-7cc5742 … 6093a21  translate comments (part 1–5 of 5)          ← safely droppable
-b79ae1b  build: add ad-hoc DMG packaging script
 ```
 
-The **five comment-translation commits touch comments only, never code**. If upstream would
-rather not carry a translated copy, take just the first six commits; conversely, to drop the
-comment translation entirely, `git revert 7cc5742^..6093a21`.
+Comment translation is **not on `main`** — it lives on the `l10n-comments` branch. It
+rewrites the comments in 10 core files, and those are precisely the ones that collide
+with upstream hardest (`EditorCanvas.swift` alone accounts for 677 changed lines) while
+contributing nothing at runtime. Keeping it on the trunk multiplies the conflict surface
+of every upstream sync. Merge `l10n-comments` back in when you want the full version;
+otherwise never think about it again.
+
+### Syncing a new upstream release
+
+```sh
+git fetch upstream
+git checkout -b sync/1.5.0 upstream/main
+git rebase sync/1.5.0 main
+
+# After resolving conflicts, always run these two — when upstream adds English copy that
+# has no matching key in the catalog, SwiftUI silently falls back to the English literal
+# and raises no error. Only the audit script can find it:
+python3 scripts/gen-xcstrings.py       # rescan the source, add the new keys
+bash    scripts/audit-localization.sh   # list whatever is still untranslated
+
+xcodebuild -project Compositor.xcodeproj -scheme Compositor \
+           -destination 'platform=macOS' test
+```
+
+`rerere` is enabled: conflict resolutions you have already worked out are recorded and
+replayed automatically when upstream makes a similar change. The `upstream` remote is
+configured **fetch-only** (its push URL is `DISABLED://`), so pushing upstream by mistake
+is structurally impossible — only `origin` accepts pushes.
 
 ## 发布
 
