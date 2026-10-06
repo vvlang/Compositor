@@ -4,6 +4,10 @@
 <dict>
 	<key>CompositorTranslator</key>
 	<string>VVLANG</string>
+	<!-- 只改用户可见的名字。磁盘上的 Compositor.app、DMG 文件名、Sparkle 的 appcast
+	     条目名全都保持原样，所以发布脚本和自动更新都不受影响。 -->
+	<key>CFBundleDisplayName</key>
+	<string>Compositor 中文版</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
