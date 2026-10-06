@@ -212,12 +212,16 @@ dc2ddca  catch the strings the first pass missed
 15786f8  translate documentation to Simplified Chinese
 ```
 
-Comment translation is **not on `main`** — it lives on the `l10n-comments` branch. It
+Comment translation **is on `main`**, merged in from the `l10n-comments` branch. It
 rewrites the comments in 10 core files, and those are precisely the ones that collide
 with upstream hardest (`EditorCanvas.swift` alone accounts for 677 changed lines) while
-contributing nothing at runtime. Keeping it on the trunk multiplies the conflict surface
-of every upstream sync. Merge `l10n-comments` back in when you want the full version;
-otherwise never think about it again.
+contributing nothing at runtime — so every upstream sync now faces roughly twice the
+conflict surface it would without it.
+
+> To go back to the lighter "Chinese UI, English comments" version, revert the single
+> `--no-ff` merge commit on top of `4d81eb5`. The merge is deliberately its own commit,
+> so it can be dropped without touching the localization work itself. The
+> `l10n-comments` branch is still there too.
 
 ### Syncing a new upstream release
 

@@ -1,24 +1,23 @@
 import CoreImage
 import Metal
 
-/// Smudge and Liquify's working copy on the GPU: each dab is `WarpStroke`'s CPU dab ported one for one, run where the
-/// canvas draws from, so the stroke never copies the whole document per pointer move — it used to make a new image of
-/// it and upload that, which on a large document cost far more than the dabs. The pixels come back to the CPU once,
-/// when the stroke ends (or for a frame the Core Graphics canvas draws).
+/// 涂抹与液化在 GPU 上的工作副本：每个 dab 都是把 `WarpStroke` 的 CPU dab 逐一移植过来，
+/// 就地运行在画布所读取的位置上，因此笔触不会在每次指针移动时拷贝整份文档——
+/// 它过去会新建一份文档的图像再上传，在大文档上这笔开销远高于 dab 本身。
+/// 像素只在笔触结束时（或为 Core Graphics 画布绘制的那一帧）一次性回到 CPU。
 @MainActor final class MetalWarp {
     let width: Int
     let height: Int
     let texture: MTLTexture
     private let renderer: GPUCanvasRenderer
-    /// Smudge: the color the brush carries, a (2r+1)² square, in 0…255.
+    /// 涂抹：画笔携带的颜色，边长 (2r+1)² 的方形，取值 0…255。
     private var carried: MTLTexture?
-    /// Liquify: the layer as the stroke found it, and how far each pixel has moved from it — a source offset per
-    /// pixel, in pixels. Each dab moves the offsets, never the pixels, and a pixel is drawn afresh from the untouched
-    /// ones through its offset; resampled at every dab instead, as the pixels themselves were, they softened a little
-    /// each time, where Photoshop's Liquify keeps them sharp.
+    /// 液化：笔触开始时的图层，以及每个像素相对它移动了多远——每像素一个源偏移，单位为像素。
+    /// 每个 dab 只移动偏移量，绝不移动像素本身；绘制时每个像素都通过自己的偏移从未被触碰的像素重新取样。
+    /// 若改为在每个 dab 后重采样像素本身，它们每次都会略微变软，而 Photoshop 的液化始终保持锐利。
     private var original: MTLTexture?
     private var offsets: MTLTexture?
-    /// Liquify: the offsets in the dab's area as they were before the dab, which the dab reads.
+    /// 液化：dab 作用区域内在该 dab 之前的偏移量，由该 dab 读取。
     private var scratch: MTLTexture?
     private var buffer: MTLCommandBuffer?
     private var encoder: MTLComputeCommandEncoder?
@@ -31,7 +30,7 @@ import Metal
         descriptor.usage = [.shaderRead, .shaderWrite]
         descriptor.storageMode = .shared
         guard let texture = renderer.device.makeTexture(descriptor: descriptor) else { return nil }
-        // Top-left rows, as the document's: a point's row is its y.
+        // 行序与文档一致，原点在左上角：点的行号就是它的 y。
         texture.replace(region: MTLRegionMake2D(0, 0, pixels.width, pixels.height), mipmapLevel: 0,
                         withBytes: data, bytesPerRow: pixels.bytesPerRow)
         self.renderer = renderer
@@ -40,10 +39,10 @@ import Metal
         height = pixels.height
     }
 
-    /// The working copy for the canvas to draw, as it stands once the dabs sent so far have run.
+    /// 供画布绘制的工作副本，即到目前为止发出的那些 dab 运行完毕后的状态。
     var image: CIImage? { CIImage(mtlTexture: texture, options: [.colorSpace: renderer.space]) }
 
-    /// The working copy's pixels, back in `pixels` (the same size), once every dab has run.
+    /// 所有 dab 运行完毕后，工作副本的像素回到 `pixels`（同样大小）。
     func read(into pixels: CGContext) {
         commit()
         last?.waitUntilCompleted()
@@ -55,7 +54,7 @@ import Metal
         var center: SIMD2<Int32>
         var radius: Int32
         var size: SIMD2<Int32>
-        /// Liquify: the corner and size of the area the dab samples from.
+        /// 液化：dab 取样区域的起点与大小。
         var origin: SIMD2<Int32>
         var area: SIMD2<Int32>
         var inverseRadius: Float
@@ -80,7 +79,7 @@ import Metal
         }
         guard let encoder else { return }
         var dab = dab
-        // Each dab works on what the one before it left.
+        // 每个 dab 都在前一个 dab 留下的结果上继续工作。
         encoder.memoryBarrier(scope: .textures)
         encoder.setComputePipelineState(pipeline)
         for (index, texture) in textures.enumerated() { encoder.setTexture(texture, index: index) }
@@ -90,7 +89,7 @@ import Metal
                                      threadsPerThreadgroup: group)
     }
 
-    /// Sends the dabs encoded so far. The canvas draws on the same queue, after them.
+    /// 发送到目前为止已编码的各个 dab。画布在同一个队列上、排在它们之后绘制。
     func commit() {
         encoder?.endEncoding()
         buffer?.commit()
@@ -117,8 +116,8 @@ import Metal
                  textures: [texture, carried], threads: 2 * radius + 1)
     }
 
-    /// Forward warp, as `WarpStroke.push`: what's under the brush moves with it, most at its center, fading to none at its
-    /// rim — worked on the offsets (see `offsets`), with the pixels under the dab drawn again from the untouched ones.
+    /// 前向变形，与 `WarpStroke.push` 相同：画笔之下的内容随之移动，中心处位移最大，向边缘逐渐衰减到零
+    /// ——它作用在偏移量上（见 `offsets`），dab 之下的像素则从未被触碰的像素重新绘制。
     func push(from a: CGPoint, to b: CGPoint, radius r: Int, diameter: CGFloat, hardness: CGFloat, strength: CGFloat) {
         let move = SIMD2<Float>(Float(b.x - a.x), Float(b.y - a.y)) * Float(strength)
         let margin = Int(ceil(max(abs(move.x), abs(move.y)))) + 2
@@ -129,7 +128,7 @@ import Metal
         let cw = x1 - x0 + 1, ch = y1 - y0 + 1
         let whole = Dab(center: .zero, radius: 0, size: SIMD2(Int32(width), Int32(height)), origin: .zero,
                         area: SIMD2(Int32(width), Int32(height)), inverseRadius: 0, hardness: 0, keep: 0, move: .zero)
-        // The first push keeps the layer as it is, and starts every offset at nothing.
+        // 第一次 push 保持图层原样，并把每个偏移量都初始化为零。
         if original == nil {
             guard let original = sized(width: width, height: height, format: .rgba8Unorm),
                   let offsets = sized(width: width, height: height, format: .rg32Float) else { return }
@@ -175,7 +174,7 @@ import Metal
         float inverseRadius; float hardness; float keep; float2 move;
     };
 
-    // How much a dab moves pixels at a distance u (0 center, 1 rim) from its center.
+    // 一个 dab 对距其中心距离为 u 的像素产生的位移量（0 为中心，1 为边缘）。
     static inline float weight(float u, float hardness) {
         if (u >= 1.0f) return 0.0f;
         if (u <= hardness) return 1.0f;
@@ -203,8 +202,8 @@ import Metal
         float w = weight(sqrt(float(offset.x * offset.x + offset.y * offset.y)) * d.inverseRadius, d.hardness);
         if (w <= 0.0f) return;
         float4 under = canvas.read(uint2(p)) * 255.0f, held = carried.read(gid);
-        // What was under the brush at the last dab, laid down here at the smudge's strength; the brush then carries
-        // what it just left, and nothing older (see WarpStroke.smudge).
+        // 上一个 dab 时画笔之下的内容，这里按涂抹强度铺下；画笔随后携带的是它刚刚留下的东西，
+        // 而不是更早的（见 WarpStroke.smudge）。
         float4 painted = under + (held - under) * w * d.keep;
         canvas.write(clamp(round(painted), 0.0f, 255.0f) / 255.0f, uint2(p));
         carried.write(painted, gid);
@@ -223,9 +222,9 @@ import Metal
         to.write(float4(0.0f), gid);
     }
 
-    // Forward warp: what's under the brush moves with it, most at its center, fading to none at its rim. The offset
-    // a pixel takes is the one found behind the brush's travel, less the travel; its color is the untouched layer's,
-    // there, sampled once.
+    // 前向变形：画笔之下的内容随之移动，中心处位移最大，向边缘逐渐衰减到零。像素采用的偏移量
+    // 是沿画笔移动路径的相反方向找到的那个，再减去移动距离；它的颜色取自该处未被触碰的图层，
+    // 只需采样一次。
     kernel void warp_push(texture2d<float, access::write> offsets [[texture(0)]],
                           texture2d<float, access::read> before [[texture(1)]],
                           texture2d<float, access::read> original [[texture(2)]],
@@ -238,7 +237,7 @@ import Metal
         if (p.x < d.origin.x || p.y < d.origin.y || p.x > last.x || p.y > last.y) return;
         float w = weight(sqrt(float(offset.x * offset.x + offset.y * offset.y)) * d.inverseRadius, d.hardness);
         if (w <= 0.0f) return;
-        // Bilinear sample of the offsets as they were, from behind the brush's travel.
+        // 双线性采样：沿画笔移动路径的反方向，取该处当时的偏移量。
         float sx = min(float(d.area.x - 1), max(0.0f, float(p.x - d.origin.x) - d.move.x * w));
         float sy = min(float(d.area.y - 1), max(0.0f, float(p.y - d.origin.y) - d.move.y * w));
         int ix = min(d.area.x - 2, int(sx)), iy = min(d.area.y - 2, int(sy));
@@ -248,7 +247,7 @@ import Metal
         float2 o01 = before.read(uint2(ix, iy + 1)).xy, o11 = before.read(uint2(ix + 1, iy + 1)).xy;
         float2 moved = mix(mix(o00, o10, fx), mix(o01, o11, fx), fy) - d.move * w;
         offsets.write(float4(moved, 0.0f, 0.0f), uint2(p));
-        // The untouched layer where that offset points, held to its edges.
+        // 该偏移量所指向的、未经触碰的图层，采样时钳制到其边缘。
         float2 source = clamp(float2(p) + moved, float2(0.0f), float2(d.size - 1));
         int2 i = min(int2(source), d.size - 2);
         float2 f = source - float2(i);

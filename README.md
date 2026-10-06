@@ -202,10 +202,13 @@ dc2ddca  catch the strings the first pass missed
 15786f8  translate documentation to Simplified Chinese
 ```
 
-注释汉化**不在 `main` 上**，单独放在 `l10n-comments` 分支：它把 10 个核心文件的
-注释翻成中文，覆盖的恰好是最容易与上游打架的那几个（`EditorCanvas.swift` 一个
-就 677 行），功能价值却为零。留在主线里只会让每次同步上游的冲突面成倍放大。
-需要完整版时 `git merge l10n-comments` 合回来即可，不想要就永远不用管。
+注释汉化**已经在 `main` 上**（合并自 `l10n-comments`，提交见下方历史）。它把 10 个
+核心文件的注释翻成中文，覆盖的恰好是最容易与上游打架的那几个（`EditorCanvas.swift`
+一个就 677 行），功能价值却为零——这意味着每次同步上游，冲突面会比纯汉化版本大一倍。
+
+> 若想回到「只汉化界面、注释保持英文」的轻量版本，`l10n-comments` 分支仍在，
+> 以 `4d81eb5` 为基准 revert 掉那个合并提交即可（该分支的合并是单独的 `--no-ff`
+> 提交，不与汉化主体交织）。
 
 ### 同步上游新版本
 

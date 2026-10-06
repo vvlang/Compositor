@@ -1,12 +1,12 @@
 import AppKit
 import CoreImage
 
-/// The six color ranges plus Master, as in Photoshop's Cmd+U.
+/// 六个颜色区间加上 Master，与 Photoshop 的 Cmd+U 一致。
 nonisolated enum ColorRange: String, CaseIterable, Sendable, Hashable, Codable {
     case master = "Master", reds = "Reds", yellows = "Yellows", greens = "Greens"
     case cyans = "Cyans", blues = "Blues", magentas = "Magentas"
 
-    /// Photoshop's starting hue band: falloff start, range start, range end, falloff end.
+    /// Photoshop 的初始色相带：falloff start、range start、range end、falloff end。
     var defaultBand: HueBand {
         switch self {
         case .master: HueBand(falloffStart: 0, rangeStart: 0, rangeEnd: 360, falloffEnd: 360)
@@ -21,25 +21,25 @@ nonisolated enum ColorRange: String, CaseIterable, Sendable, Hashable, Codable {
     static let colorRanges = ColorRange.allCases.filter { $0 != .master }
 }
 
-/// A hue band in degrees, wrapping at 360: full strength between `rangeStart` and
-/// `rangeEnd`, fading to nothing at `falloffStart` and `falloffEnd`.
+/// 以度数表示的色相带，在 360 处回绕：`rangeStart` 与 `rangeEnd` 之间为满强度，
+/// 在 `falloffStart` 与 `falloffEnd` 处淡出为 0。
 nonisolated struct HueBand: Equatable, Sendable, Codable {
     var falloffStart: Double
     var rangeStart: Double
     var rangeEnd: Double
     var falloffEnd: Double
 
-    /// Degrees from `from` forward to `to`, always 0…360.
+    /// 从 `from` 正向到 `to` 的度数，范围始终 0…360。
     static func forward(_ from: Double, _ to: Double) -> Double {
         let delta = (to - from).truncatingRemainder(dividingBy: 360)
         return delta < 0 ? delta + 360 : delta
     }
 
-    /// How strongly this band claims a hue: 1 inside the range, ramping linearly through
-    /// each falloff shoulder, 0 outside. Wraparound is handled by measuring forward.
+    /// 此色带对某个色相的强度：区间内为 1，经每个 falloff shoulder 线性爬升，区间外为 0。
+    /// 通过正向测量处理环绕。
     func weight(of hue: Double) -> Double {
         let span = Self.forward(falloffStart, falloffEnd)
-        guard span > 0 else { return 1 } // Master covers everything.
+        guard span > 0 else { return 1 } // Master 覆盖所有色相。
         let position = Self.forward(falloffStart, hue)
         guard position <= span else { return 0 }
         let rampIn = Self.forward(falloffStart, rangeStart)
@@ -52,7 +52,7 @@ nonisolated struct HueBand: Equatable, Sendable, Codable {
 
     var handles: [Double] { [falloffStart, rangeStart, rangeEnd, falloffEnd] }
 
-    /// A band centered on one hue, keeping this band's core and shoulder widths.
+    /// 居中于某色相的色带，保留此色带的中心宽度与 shoulder 宽度。
     func centered(on hue: Double) -> HueBand {
         let core = Self.forward(rangeStart, rangeEnd)
         let leading = Self.forward(falloffStart, rangeStart)
@@ -66,7 +66,7 @@ nonisolated struct HueBand: Equatable, Sendable, Codable {
                        rangeEnd: wrap(start + core), falloffEnd: wrap(start + core + trailing))
     }
 
-    /// Widens the band so this hue is fully inside it, moving whichever edge is nearer.
+    /// 加宽色带使此色相完全位于其中，移动较近的那条边。
     mutating func include(_ hue: Double) {
         guard weight(of: hue) < 1 else { return }
         let shoulderIn = Self.forward(falloffStart, rangeStart)
@@ -83,7 +83,7 @@ nonisolated struct HueBand: Equatable, Sendable, Codable {
         normalize()
     }
 
-    /// Narrows the band so this hue falls outside it entirely, shoulder included.
+    /// 收窄色带使此色相完全位于其外，包含 shoulder。
     mutating func exclude(_ hue: Double) {
         guard weight(of: hue) > 0 else { return }
         let shoulderIn = Self.forward(falloffStart, rangeStart)
@@ -100,7 +100,7 @@ nonisolated struct HueBand: Equatable, Sendable, Codable {
         normalize()
     }
 
-    /// Keeps all four handles in 0…360 and the band under a full circle.
+    /// 保持四个手柄都在 0…360 区间，色带不超过一整圈。
     private mutating func normalize() {
         func wrap(_ value: Double) -> Double {
             let remainder = value.truncatingRemainder(dividingBy: 360)
@@ -113,7 +113,7 @@ nonisolated struct HueBand: Equatable, Sendable, Codable {
         }
     }
 
-    /// Moves one handle, keeping the four in order and the band under a full circle.
+    /// 移动一个手柄，保持四个手柄的顺序，色带不超过一整圈。
     mutating func setHandle(_ index: Int, to degrees: Double) {
         var updated = self
         let value = (degrees.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
@@ -131,10 +131,10 @@ nonisolated struct HueBand: Equatable, Sendable, Codable {
     }
 }
 
-/// Which eyedropper is armed while the Hue/Saturation panel is open.
+/// Hue/Saturation 面板打开时，所选中的吸管。
 nonisolated enum HueSampleMode: String, CaseIterable, Sendable {
     case replace = "Sample", add = "Add", remove = "Remove"
-    /// All three are eyedroppers; Add and Remove carry a small badge.
+    /// 三者都是吸管；Add 与 Remove 配有小角标。
     var symbol: String { "eyedropper" }
     var badge: String? {
         switch self {
@@ -152,7 +152,7 @@ nonisolated enum HueSampleMode: String, CaseIterable, Sendable {
     }
 }
 
-/// A targeted-adjustment drag in progress.
+/// 正在进行的定向调整拖动。
 struct HueTargetDrag {
     let range: ColorRange
     let hue: Double
@@ -165,13 +165,13 @@ nonisolated struct RangeAdjustment: Equatable, Sendable, Codable {
     var lightness: Double = 0
 }
 
-/// Hue is −180…180 (0…360 when colorizing), Saturation −100…100 (0…100 colorizing),
-/// Lightness −100…100. Each color range keeps its own values; Master applies everywhere.
+/// Hue 取值 −180…180（着色时 0…360），Saturation −100…100（着色时 0…100），
+/// Lightness −100…100。每个颜色区间各自保留值；Master 作用于全部。
 nonisolated struct HueSaturationSettings: Equatable, Sendable, Codable {
-    /// Which range the sliders and spectrum edit.
+    /// 滑块和色相条所编辑的颜色区间。
     var range: ColorRange = .master
     var colorize = false
-    /// Applies the selected range to everything *outside* its band instead.
+    /// 改为将所选区间作用于其色带*之外*的所有色相。
     var invertRange = false
     var adjustments: [ColorRange: RangeAdjustment] = [:]
     var bands: [ColorRange: HueBand] = Dictionary(uniqueKeysWithValues: ColorRange.allCases.map { ($0, $0.defaultBand) })
@@ -183,7 +183,7 @@ nonisolated struct HueSaturationSettings: Equatable, Sendable, Codable {
         adjustments[range] = RangeAdjustment(hue: hue, saturation: saturation, lightness: lightness)
     }
 
-    /// The sliders read and write the selected range.
+    /// 滑块读写所选颜色区间。
     var hue: Double {
         get { adjustments[range]?.hue ?? 0 }
         set { adjustments[range, default: RangeAdjustment()].hue = newValue }
@@ -201,11 +201,11 @@ nonisolated struct HueSaturationSettings: Equatable, Sendable, Codable {
         set { bands[range] = newValue }
     }
 
-    /// Photoshop's starting point when Colorize is switched on.
+    /// Photoshop 打开 Colorize 时的起始值。
     static let colorizeStart = HueSaturationSettings(hue: 0, saturation: 25, lightness: 0, colorize: true)
     var isIdentity: Bool { !colorize && adjustments.values.allSatisfy { $0 == RangeAdjustment() } }
 
-    /// How much a range applies to one hue: Master everywhere, others through their band.
+    /// 某颜色区间对某色相的作用强度：Master 对所有色相生效，其他色相则经由其色带作用。
     func weight(of colorRange: ColorRange, hue: Double) -> Double {
         guard colorRange != .master else { return 1 }
         let weight = (bands[colorRange] ?? colorRange.defaultBand).weight(of: hue)
@@ -218,7 +218,7 @@ nonisolated struct HueSaturationJob: @unchecked Sendable {
     let settings: HueSaturationSettings
     let selection: SelectionClip?
     let pixelToDocument: CGAffineTransform
-    /// Previews skip the layer-panel thumbnail.
+    /// 预览跳过图层面板的缩略图。
     var thumbnail = true
 }
 
@@ -227,16 +227,16 @@ nonisolated struct AdjustedPixels: @unchecked Sendable {
     let thumbnail: CGImage?
 }
 
-/// Builds a color cube from the settings and applies it on the GPU. Working through a cube
-/// keeps slider dragging fast on large images; identity settings never reach here.
+/// 根据设置构建颜色立方表并在 GPU 上应用。通过立方表操作可在大幅图像上保持拖动顺畅；
+/// 单位（identity）设置不会走到这里。
 nonisolated enum HueSaturationFilter {
-    /// 33 points per axis, the usual size for this kind of lookup: fast to build, smooth enough.
+    /// 每轴 33 个采样点——此类查找表的常见尺寸：构建迅速，足够平滑。
     static let dimension = 33
 
     static func run(_ job: HueSaturationJob) throws -> AdjustedPixels {
         let width = job.image.width, height = job.image.height
-        // On the CPU across the cores rather than Core Image: a Hue/Saturation layer runs on the whole canvas view every
-        // frame, and the trip to the GPU and back cost more than the lookup. The lookup unpremultiplies around itself.
+        // 在 CPU 多核上而非 Core Image：Hue/Saturation 图层每帧都在整个画布视图上运行，
+        // 一来一回的 GPU 通信比查表本身还贵。查表在自身周围做 unpremultiply。
         let context = try BrushRaster.copy(job.image)
         guard let data = context.data else { throw ExportError.render }
         let pixels = data.assumingMemoryBound(to: UInt8.self)
@@ -258,9 +258,8 @@ nonisolated enum HueSaturationFilter {
         return AdjustedPixels(image: result, thumbnail: job.thumbnail ? try PixelAdjust.thumbnail(of: result) : nil)
     }
 
-    /// How much every range shifts a given hue, sampled once per degree. Building this
-    /// once per settings keeps the cube cheap: without it each of ~36k cube entries would
-    /// re-evaluate all seven ranges.
+    /// 每个色相对应的总位移量，每度采样一次。每套设置只构建一次，保持立方表廉价：
+    /// 否则 ~36k 个立方表条目都要重新评估全部七个区间。
     typealias HueResponse = (shift: Double, saturation: Double, lightness: Double)
 
     static func hueResponse(_ settings: HueSaturationSettings) -> [HueResponse] {
@@ -277,12 +276,12 @@ nonisolated enum HueSaturationFilter {
         }
     }
 
-    /// The last few tables built: a Hue/Saturation layer redraws with the same settings on every canvas frame,
-    /// and building one takes longer than applying it.
+    /// 最近构建的几个表：Hue/Saturation 图层在每一帧画布上都用同一套设置重绘，
+    /// 而构建一个表比应用它更耗时。
     private static let cubeLock = NSLock()
     nonisolated(unsafe) private static var cubes: [(settings: HueSaturationSettings, data: Data)] = []
 
-    /// The lookup table: every cube corner converted to HSL, adjusted, and back.
+    /// 查找表：每个立方表角点转换为 HSL、调整、再转换回去。
     static func cube(_ settings: HueSaturationSettings) -> Data {
         if let cached = cubeLock.withLock({ cubes.first { $0.settings == settings }?.data }) { return cached }
         let data = buildCube(settings)
@@ -324,7 +323,7 @@ nonisolated enum HueSaturationFilter {
             saturation = min(1, max(0, settings.saturation / 100))
             lightnessAmount = settings.lightness / 100
         } else {
-            // Every range contributes, weighted by how strongly it claims the original hue.
+            // 每个区间都参与加权，按其对原始色相的作用强度。
             let table = response ?? hueResponse(settings)
             let sampled = table[min(table.count - 1, max(0, Int(hue.rounded())))]
             lightnessAmount = sampled.lightness / 100
@@ -332,15 +331,15 @@ nonisolated enum HueSaturationFilter {
             if hue < 0 { hue += 360 }
             saturation = adjustedSaturation(saturation, by: sampled.saturation)
         }
-        // Lightness pulls toward white above 0 and toward black below, reaching either at ±100.
+        // Lightness 高于 0 时向白色拉，低于 0 时向黑色拉，至 ±100 时达到极端。
         let amount = min(1, max(-1, lightnessAmount))
         lightness = amount >= 0 ? lightness + (1 - lightness) * amount : lightness * (1 + amount)
         return toRGB(hue: hue, saturation: saturation, lightness: min(1, max(0, lightness)))
     }
 
-    /// The hue a spectrum swatch becomes, for the "after" bar.
-    /// Photoshop's Saturation: below 0 it scales toward gray (−100 is gray); above 0 it divides by what's left, so
-    /// +50 doubles it and +100 takes any color all the way. Multiplicative both ways, so neutral grays stay neutral.
+    /// 色相条色样所对应的色相，供 "after" 色条使用。
+    /// Photoshop 的 Saturation：低于 0 时按比例向灰色收敛（−100 即为灰色）；高于 0 时按剩余量做除法，
+    /// 因此 +50 使饱和度翻倍，+100 把任意颜色推满。两侧都是乘性变换，因此中性灰始终保持中性。
     static func adjustedSaturation(_ saturation: Double, by amount: Double) -> Double {
         let amount = min(1, max(-1, amount / 100))
         guard amount > 0 else { return max(0, saturation * (1 + amount)) }
@@ -391,26 +390,25 @@ nonisolated enum HueSaturationFilter {
     }
 }
 
-/// One open Hue/Saturation dialog. Previews render from a downscaled copy of the original
-/// and are drawn straight on the canvas, so dragging stays responsive and the document is
-/// untouched until OK.
+/// 一个打开的 Hue/Saturation 对话框。预览从原图的缩小副本渲染并直接绘制到画布上，
+/// 拖动保持流畅，文档在点击 OK 之前不会被修改。
 @Observable
 final class HueSaturationEdit {
     let layerID: UUID
     let original: ImportedImage
     let selection: SelectionClip?
     let pixelToDocument: CGAffineTransform
-    /// Downscaled original used for previews, with the mapping for its own pixel grid.
+    /// 缩小后的原图供预览使用，附其自身像素网格的映射。
     @ObservationIgnored let previewSource: CGImage
     @ObservationIgnored let previewPixelToDocument: CGAffineTransform
     var settings = HueSaturationSettings()
     var preview = true
-    /// What the canvas shows while the dialog is open; nil means the layer's own pixels.
-    /// Not observed: canvas redraws are driven by `brushRevision`.
+    /// 对话框打开期间画布所显示的内容；nil 表示使用图层自身的像素。
+    /// 不参与响应式追踪：画布重绘由 `brushRevision` 驱动。
     @ObservationIgnored private(set) var preparedPreview: CGImage?
 
-    /// Previews render at most this many pixels on the longest side: full size for anything ordinary, so the canvas
-    /// shows the real thing rather than a coarse copy stretched to fit, as a Hue/Saturation layer already does.
+    /// 预览最长边最多渲染这么多像素：常规情况下使用原图大小，使画布展示真实效果
+    /// 而非拉伸放大的粗糙副本，Hue/Saturation 图层本就如此。
     static let previewLimit = 8000
 
     init(layerID: UUID, original: ImportedImage, selection: SelectionClip?, transform: LayerTransform) throws {
@@ -439,9 +437,8 @@ final class HueSaturationEdit {
 }
 
 extension EditorSession {
-    /// Color adjustments need a visible image layer (not a mask) and a non-empty selection
-    /// if there is one; a pending gradient or transform is applied first.
-    /// Vignette also paints an empty layer, which has no pixels until something is put on it.
+    /// 颜色调整需要可见的图像图层（而非蒙版），若有选区则选区必须非空；
+    /// 先应用挂起的渐变或变换。Vignette 也会绘制到空白图层上，在放上像素之前它没有内容。
     var canVignette: Bool {
         if canAdjustColors { return true }
         guard let layer = activeLayer, layer.asset == nil, layer.adjustment == nil, !layer.isGroup else { return false }
@@ -450,7 +447,7 @@ extension EditorSession {
     var canAdjustColors: Bool { canAdjust(allowingEmpty: false) }
     private func canAdjust(allowingEmpty: Bool) -> Bool {
         _ = showsBusy
-        // Text being edited is drawn by its editor, not the layer, so a filter's preview of it would be wrong: commit it first.
+        // 正在编辑的文本由其编辑器绘制，而非图层本身，因此滤镜对它的预览会失真：先提交。
         guard levels == nil, filterEdit == nil, textDraft == nil, document != nil, let layer = activeLayer, !isProjectBusy, !isImporting, brushStroke == nil,
               pixelMove == nil, renamingLayerID == nil, !showsNewDocument, !showsImporter,
               selectedLayerIDs.count == 1, !layer.isGroup, !isMaskSelected, layer.asset != nil || allowingEmpty,
@@ -469,10 +466,9 @@ extension EditorSession {
         } catch { brushError = error.localizedDescription }
     }
 
-    /// Live preview from the downscaled original. Requests coalesce rather than cancel:
-    /// a render that is already running finishes and is shown, then the newest request
-    /// renders. Cancelling instead starved the preview during a drag, because slider
-    /// changes arrive faster than a render completes.
+    /// 来自缩小原图的实时预览。请求合并而不取消：已在进行的渲染会完成并显示，
+    /// 然后渲染最新一次请求。取消反而会在拖动过程中使预览断流，因为滑块变化的到达速度
+    /// 比一次渲染完成更快。
     func updateHueSaturation(_ settings: HueSaturationSettings, preview: Bool) {
         guard let edit = hueSaturation else { return }
         edit.settings = settings
@@ -507,8 +503,7 @@ extension EditorSession {
         }
     }
 
-    /// OK: renders at full quality and records one "Hue/Saturation" undo step. Identity
-    /// settings change nothing at all.
+    /// OK：以全分辨率渲染并记录一个 "Hue/Saturation" 撤销步骤。单位（identity）设置完全不会改动。
     func commitHueSaturation() async {
         if finishAdjustmentEditing(commit: true) { return }
         guard let edit = hueSaturation else { return }
@@ -518,8 +513,8 @@ extension EditorSession {
         hueSaturationPending = nil
         hueSaturationTask?.cancel()
         let settings = edit.settings
-        // The preview stays on screen until the committed pixels are in the document:
-        // clearing it first leaves the canvas showing the original for a frame.
+        // 预览在提交后的像素进入文档之前一直保留在屏幕上：
+        // 先清掉会让画布有一帧显示原图。
         defer {
             hueSaturation = nil
             brushRevision += 1
@@ -540,15 +535,14 @@ extension EditorSession {
         endEdit()
     }
 
-    /// The hue under a document point, from the visible composite. Near-neutral pixels
-    /// have no meaningful hue.
+    /// 文档某点对应的色相，取自可见合成图。近中性像素没有有意义的色相。
     func sampledHue(at point: CGPoint) -> Double? {
         guard let color = sampleCompositeColor(at: point) else { return nil }
         let hsb = PickerHSB(color)
         return hsb.saturation > 0.02 ? hsb.hue : nil
     }
 
-    /// The eyedroppers: re-center, widen, or narrow the selected range's band.
+    /// 吸管：重新居中、加宽或收窄所选区间的色带。
     func sampleHueRange(at point: CGPoint) {
         guard let edit = hueSaturation, let mode = hueSampleMode else { return }
         var settings = edit.settings
@@ -561,8 +555,7 @@ extension EditorSession {
         updateHueSaturation(settings, preview: edit.preview)
     }
 
-    /// Targeted adjustment: picks the range owning the sampled color and drags its
-    /// saturation (or hue with Command held).
+    /// 定向调整：选中拥有采样颜色的区间并拖动其 saturation（按住 Command 则调整 hue）。
     func beginHueTargeting(at point: CGPoint) -> Bool {
         guard let edit = hueSaturation, hueTargeting, !edit.settings.colorize,
               let hue = sampledHue(at: point) else { NSSound.beep(); return false }
@@ -577,7 +570,7 @@ extension EditorSession {
         return true
     }
 
-    /// Dragging right raises the value, left lowers it; one unit per view point.
+    /// 向右拖动抬高数值，向左降低；每个视图点对应一个单位。
     func dragHueTargeting(byViewDelta delta: CGFloat, adjustsHue: Bool) {
         guard let edit = hueSaturation, let drag = hueTargetDrag else { return }
         var settings = edit.settings

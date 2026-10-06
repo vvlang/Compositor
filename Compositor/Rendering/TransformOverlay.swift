@@ -3,7 +3,7 @@ import AppKit
 struct TransformOverlayGeometry: Equatable {
     let handles: [CGPoint]
     let rotationHandle: CGPoint
-    /// A distortion has no single rotation, so its rotation handle is hidden.
+    /// 变形没有单一旋转角度，因此隐藏旋转手柄。
     let showsRotation: Bool
 
     init(transform: LayerTransform, viewport: CanvasViewport, documentSize: CGSize) {
@@ -13,7 +13,7 @@ struct TransformOverlayGeometry: Equatable {
         showsRotation = true
     }
 
-    /// Handles for a distortion: its four corners (document pixels) and the midpoints of its edges.
+    /// 变形的手柄：四个角点（文档像素）以及各边的中点。
     init(corners: [CGPoint], viewport: CanvasViewport, documentSize: CGSize) {
         let view = corners.map { viewport.viewPoint(from: $0, documentSize: documentSize) }
         func middle(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2) }
@@ -49,7 +49,7 @@ struct TransformOverlayGeometry: Equatable {
     }
 }
 
-/// Separate overlay so selecting a layer does not redraw image pixels.
+/// 独立的 overlay 层，这样选中图层时不必重绘图像像素。
 final class TransformOverlay: NSView {
     let session: EditorSession
     init(session: EditorSession) {
@@ -64,7 +64,7 @@ final class TransformOverlay: NSView {
     var geometry: TransformOverlayGeometry? {
         guard session.tool == .move, session.showsTransformControls || session.transformEdit?.persistent == true,
               let document = session.document else { return nil }
-        // Several layers selected, or a folder: one box around them all.
+        // 选中了多个图层，或选中了文件夹：一个包围它们的框。
         if session.transformEdit?.group != nil || (session.transformEdit == nil && session.transformsAsGroup) {
             if let corners = session.transformEdit?.corners {
                 return TransformOverlayGeometry(corners: corners, viewport: session.viewport, documentSize: document.size)
@@ -80,7 +80,7 @@ final class TransformOverlay: NSView {
                                         viewport: session.viewport, documentSize: document.size)
     }
 
-    /// Pending gradient endpoints in view coordinates.
+    /// 视图坐标系下待定的渐变线两端点。
     var gradientLine: (start: CGPoint, end: CGPoint)? {
         guard let edit = session.gradientEdit, edit.hasLine, let document = session.document else { return nil }
         return (session.viewport.viewPoint(from: edit.start, documentSize: document.size),
@@ -89,24 +89,24 @@ final class TransformOverlay: NSView {
 
     var antsPhase: CGFloat = 0
 
-    // MARK: Marching ants level of detail
+    // MARK: 蚂蚁线的细节层级
     //
-    // A Magic Wand outline on detailed artwork can have hundreds of thousands of edges, one per pixel step. Stroked in
-    // full every tick, zoomed out they pile into a few screen pixels and one redraw can take seconds, which froze the
-    // app. Below 1:1 a complex outline is drawn from one traced at screen resolution instead: built in the background,
-    // cached per power-of-two zoom step, so it never has more edges than the screen has pixels to show.
+    // 细节丰富的画作上，魔棒轮廓可能有几十万个边，每一步像素一个。若每个时钟周期都完整描边，
+    // 缩小后它们会挤进几个屏幕像素，一次重绘可能耗时数秒——这曾经让 App 卡死。
+    // 因此在 1:1 以下，复杂轮廓改用按屏幕分辨率描出的版本绘制：它在后台构建，
+    // 并按 2 的幂次缩放档位缓存，这样边数永远不会超过屏幕可显示的像素数。
 
-    /// Outlines at or under this many path elements are always drawn in full; marquees and lassos stay exact.
+    /// 路径元素数不超过该值的轮廓一律完整绘制；选框与套索因此始终精确。
     private static let fullDetailLimit = 20_000
     private var antsSource: CGPath?
     private var antsSourceIsComplex = false
-    /// The screen-resolution outline in document coordinates, and the zoom step it was traced for.
+    /// 以文档坐标表示的屏幕分辨率轮廓，以及描出它时所用的缩放档位。
     private var antsLevel: (path: CGPath, step: CGFloat)?
     private var antsPendingStep: CGFloat?
     private var antsTask: Task<Void, Never>?
 
-    /// What the ants stroke: the selection itself, or when zoomed out on a complex one, its screen-resolution outline.
-    /// Nil while the first simplified outline is still being traced.
+    /// 蚂蚁线描边的对象：选区本身；或在复杂轮廓且缩小时，改用其屏幕分辨率版本。
+    /// 首版简化轮廓仍在描摹期间为 nil。
     private func antsOutline(for path: CGPath) -> CGPath? {
         if antsSource !== path {
             antsSource = path
@@ -120,7 +120,7 @@ final class TransformOverlay: NSView {
         }
         let scale = session.viewport.pointsPerPixel * (window?.backingScaleFactor ?? 2)
         guard antsSourceIsComplex, scale < 1, let document = session.document else { return path }
-        // Screen pixels per document pixel, rounded up to a power of two so zooming doesn't retrace on every frame.
+        // 每个文档像素对应的屏幕像素数，向上取整到 2 的幂，这样缩放时不必每帧重新描摹。
         let step = min(1, pow(2, ceil(log2(max(scale, 1 / 4096)))))
         if antsLevel?.step != step, antsPendingStep != step {
             antsPendingStep = step
@@ -134,17 +134,17 @@ final class TransformOverlay: NSView {
                 self.needsDisplay = true
             }
         }
-        // Until the new step is traced, the last one stands in: a little coarse or fine for a moment, never slow.
+        // 在新档位描出之前，先沿用上一次的：短时间内可能略粗或略细，但绝不会卡顿。
         return antsLevel?.path
     }
 
-    /// `path` filled into a mask fine enough to fill quickly, averaged down to `step` screen pixels per document pixel,
-    /// and traced along those pixels' edges. Any coverage counts, so thin parts stay outlined rather than vanishing.
+    /// 把 `path` 填充进一张足够精细、填充起来很快的蒙版，平均到每文档像素 `step` 个屏幕像素，
+    /// 再沿这些像素的边缘描出轮廓。只要有覆盖就算数，因此细窄的部分仍会保留轮廓而不至消失。
     private nonisolated static func traceOutline(_ path: CGPath, canvas: CGRect, step: CGFloat) -> CGPath? {
         let region = path.boundingBoxOfPath.intersection(canvas).integral
         guard !region.isNull, region.width >= 1, region.height >= 1 else { return nil }
-        // Filling costs about as much as the edges each output pixel has to sort through, so the mask is filled at no
-        // less than half resolution and at most about 40 megapixels.
+        // 填充的代价大致等同于每个输出像素要穿过的边数，因此蒙版以不低于一半的分辨率填充，
+        // 且最多约 40 百万像素。
         let fill = min(1, max(step, (40_000_000 / (region.width * region.height)).squareRoot()))
         func mask(_ width: Int, _ height: Int) -> CGContext? {
             CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
@@ -152,7 +152,7 @@ final class TransformOverlay: NSView {
         }
         let fillWidth = max(1, Int((region.width * fill).rounded(.up))), fillHeight = max(1, Int((region.height * fill).rounded(.up)))
         guard let filled = mask(fillWidth, fillHeight) else { return nil }
-        // Top-left origin, so a mask row is a document row, as the tracer expects.
+        // 原点在左上角，因此蒙版的一行就是文档的一行，与描摹器的预期一致。
         filled.translateBy(x: 0, y: CGFloat(fillHeight))
         filled.scaleBy(x: fill, y: -fill)
         filled.translateBy(x: -region.minX, y: -region.minY)
@@ -187,8 +187,7 @@ final class TransformOverlay: NSView {
         drawSnapGuides()
     }
 
-    /// Non-printing layout grid over the document: majors in the chosen style, dotted subdivisions, both in the
-    /// chosen color.
+    /// 覆盖在文档之上的布局网格，不参与打印：主格线用所选线型，网格分段为点线，两者都用所选颜色。
     private func drawLayoutGrid() {
         guard session.showsGrid, let document = session.document, let transform = documentToView,
               let context = NSGraphicsContext.current?.cgContext else { return }
@@ -233,7 +232,7 @@ final class TransformOverlay: NSView {
         context.restoreGState()
     }
 
-    /// User guides span the whole view, including the pasteboard.
+    /// 用户参考线横跨整个视图，包括画布外的空白区。
     private func drawGuides() {
         guard session.showsGuides, let document = session.document,
               let context = NSGraphicsContext.current?.cgContext else { return }
@@ -257,7 +256,7 @@ final class TransformOverlay: NSView {
         context.restoreGState()
     }
 
-    /// While a move is snapped, a line along what it lined up with, across the whole canvas.
+    /// 移动被吸附时，沿着对齐目标画一条贯穿整块画布的线。
     private func drawSnapGuides() {
         let guides = session.snapGuides
         guard !guides.xs.isEmpty || !guides.ys.isEmpty, let document = session.document,
@@ -284,7 +283,7 @@ final class TransformOverlay: NSView {
         return CGAffineTransform(translationX: origin.x, y: origin.y).scaledBy(x: scale, y: scale)
     }
 
-    /// Marching ants: a white line under an animated black dash.
+    /// 蚂蚁线：一条白线，上面覆盖一节会动的黑线。
     private func drawSelection() {
         guard let selection = session.displayedSelection, !selection.isEmpty, var transform = documentToView,
               let outline = antsOutline(for: selection.path),
@@ -326,7 +325,7 @@ final class TransformOverlay: NSView {
         context.setLineWidth(1)
         context.strokePath()
         if draft.kind == .polygonal {
-            // The first corner: click it to close the outline.
+            // 第一个角点：点击它即可闭合轮廓。
             let handle = CGRect(x: first.x - 4, y: first.y - 4, width: 8, height: 8)
             context.setFillColor(NSColor.white.cgColor)
             context.fill(handle)
@@ -346,7 +345,7 @@ final class TransformOverlay: NSView {
             path.move(to: geometry.handles[1])
             path.addLine(to: geometry.rotationHandle)
         }
-        // Just the accent line: a dark line behind it read as a grey halo around the box.
+        // 只画强调线：在其下方再加一条深色线，会在框周围读作一圈灰色光晕。
         context.addPath(path)
         context.setStrokeColor(NSColor.controlAccentColor.cgColor)
         context.setLineWidth(1)
@@ -383,7 +382,7 @@ final class TransformOverlay: NSView {
             (index: index, rect: CGRect(x: handles[index].x - radius, y: handles[index].y - radius,
                                         width: radius * 2, height: radius * 2))
         }
-        // Entire edges are draggable, not just the small midpoint squares.
+        // 整条边都可以拖动，而不只是中间那些小方块。
         for index in [1, 5] {
             regions.append((index, CGRect(x: rect.minX + radius, y: handles[index].y - radius,
                 width: max(0, rect.width - radius * 2), height: radius * 2)))
@@ -398,7 +397,7 @@ final class TransformOverlay: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         if session.gradientSettings.shape == .radial {
-            // Faint rim where the radial gradient reaches its end color.
+            // 径向渐变到达末端颜色处的淡边。
             let radius = hypot(line.end.x - line.start.x, line.end.y - line.start.y)
             let rim = CGRect(x: line.start.x - radius, y: line.start.y - radius, width: radius * 2, height: radius * 2)
             context.setLineDash(phase: 0, lengths: [4, 4])
@@ -427,7 +426,7 @@ final class TransformOverlay: NSView {
             context.setFillColor(NSColor.white.cgColor)
             context.fillEllipse(in: rect)
             context.strokeEllipse(in: rect)
-            // Checkerboard shows through transparent ends.
+            // 透明的两端会透出棋盘格。
             let inner = rect.insetBy(dx: 2.5, dy: 2.5)
             context.setFillColor(NSColor(white: 0.75, alpha: 1).cgColor)
             context.fillEllipse(in: inner)
