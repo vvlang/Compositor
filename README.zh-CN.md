@@ -247,6 +247,45 @@ is structurally impossible — only `origin` accepts pushes.
 
 ## 发布
 
+### GitHub Actions（日常用的就是这条）
+
+推送到 `main` 就会自动构建，**不用手动操作**。产物有两个去处：
+
+| 去处 | 内容 | 保留 |
+|---|---|---|
+| Release `latest` | `Compositor-<version>.dmg` | 一直有，但**每次推送都被覆盖** |
+| Actions artifact | 同一份 DMG | 90 天，每次推送各存一份 |
+
+`latest` 是滚动渠道：附件每次推送都会被覆盖，但 `latest` 这个 tag 始终指向**第一次创建它的那次提交**。想知道手上的 DMG 到底是哪次构建的，看 Release 说明里的「构建自提交」和 SHA-256 —— 两者都随附件一起刷新。main 上连续推送时，前一次构建会被取消（`cancel-in-progress`），只保留最后一次。
+
+需要固定某个版本时打 tag：
+
+```bash
+git tag v1.4.9 && git push origin v1.4.9
+```
+
+这会发出一个按版本号的 pre-release，且**已发过的版本不会被覆盖**——
+同一个 tag 再推一次，构建照跑，但发布那步会跳过。
+
+CI 里还有一步 `Verify › localization`，跑 `scripts/audit-localization.sh`。
+本地化的问题不会让编译变红（漏翻的键只是静默显示英文），所以单独一个 job 守着它。
+本地想先自查一遍：
+
+```bash
+bash scripts/audit-localization.sh
+```
+
+### 本机构建
+
+```bash
+bash scripts/package-adhoc-dmg.sh   # → dist/Compositor-<version>.dmg
+```
+
+注意用 `bash` 调用而不是 `./scripts/package-adhoc-dmg.sh`——
+放在云同步目录里时，可执行位会被同步客户端清掉。
+
+### 带公证的正式发布（上游做法）
+
 `scripts/release.sh` 会构建 Release 版本，使用 Developer ID 签名，经 `notarytool` 公证并装订，最后打包为 `dist/Compositor-<version>.dmg`。
 
 它需要以下依赖（均保存在仓库之外）：

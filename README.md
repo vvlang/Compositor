@@ -96,6 +96,51 @@ Open `Compositor.xcodeproj` and run the **Compositor** scheme.
 
 ## Releasing
 
+### GitHub Actions (what this fork uses day to day)
+
+A push to `main` builds the DMG on its own — there is nothing to run by hand. The
+build lands in two places:
+
+| Where | What | Kept |
+|---|---|---|
+| Release `latest` | `Compositor-<version>.dmg` | Always, but **overwritten on every push** |
+| Actions artifact | the same DMG | 90 days, one per push |
+
+`latest` is a rolling channel: the attachment is overwritten on every push, but the
+`latest` tag itself keeps pointing at **the commit that created it**. To tell which
+build a given DMG came from, read the commit and SHA-256 in the release notes — both
+are refreshed with the asset. Consecutive pushes to `main` cancel the earlier build,
+so only the last one survives.
+
+Tag a commit to pin a version:
+
+```bash
+git tag v1.4.9 && git push origin v1.4.9
+```
+
+That publishes a pre-release under the version number, and **an already-published
+version is never overwritten** — re-pushing the tag still builds, but the publish step
+skips.
+
+CI also runs `Verify › localization` (`scripts/audit-localization.sh`). Localization
+problems don't turn the build red — a missing key just silently shows English — so a
+separate job guards it. Run the same check locally with:
+
+```bash
+bash scripts/audit-localization.sh
+```
+
+### Building locally
+
+```bash
+bash scripts/package-adhoc-dmg.sh   # → dist/Compositor-<version>.dmg
+```
+
+Invoke it with `bash` rather than `./scripts/package-adhoc-dmg.sh`: in a cloud-synced
+folder the sync client clears the executable bit.
+
+### Notarized releases (what upstream does)
+
 `scripts/release.sh` builds a Release version, signs it with Developer ID, notarizes and staples it, and packages it into `dist/Compositor-<version>.dmg`.
 
 It needs, all kept outside this repository:

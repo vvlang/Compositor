@@ -77,3 +77,22 @@ jobs:
           path: '*.xcresult'
           retention-days: 7
           if-no-files-found: ignore
+
+  # 本地化的两类失败都不会让编译变红：漏翻的键只是静默地显示英文，
+  # 该进目录的字面量没进目录也一样，跑测试都发现不了。所以单独一个 job 守着。
+  #
+  # 目录由 xcstringstool 提取，只有 macOS 有，所以这个 job 也得用 macOS ——
+  # 换 Linux 跑，形状检查还在，目录一致性那一步会直接报错。
+  localization:
+    name: localization
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: Audit localization
+        run: bash scripts/audit-localization.sh
