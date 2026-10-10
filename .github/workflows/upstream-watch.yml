@@ -1,0 +1,163 @@
+name: Upstream watch
+
+# 只做一件事：检查上游有没有新提交，有就开个 Issue 提醒。
+#
+# **不合并、不改代码、不推任何东西。** 同步上游要判断的事（冲突怎么解、
+# 新文案怎么译）没法自动决定，所以那部分留给人手动做 —— 这个 workflow
+# 存在的意义是「让你知道该做了」，而不是「替你做」。
+#
+# 每天早上 8 点（UTC+8）跑一次。也可以在 Actions 页面手动触发。
+on:
+  schedule:
+    # GitHub 的 cron 是 UTC。周一至周五早上 8 点 = UTC 0 点。
+    # 周末上游很少发版，但排上也不碍事。
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# 无论成败都不该挡住后续的定时运行。
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check for upstream updates
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # 需要 upstream 的历史来算「我们落后了几个提交」。
+          fetch-depth: 0
+
+      - name: Add upstream
+        run: |
+          git remote add upstream https://github.com/robbietilton/Compositor.git
+          git fetch upstream --prune
+
+      - name: Check if Issues are enabled
+        id: issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 仓库没开 Issues 就不开提醒，免得整个 job 因为 gh 报错而变红。
+          # 结果照常写进 run summary。
+          if gh api "repos/${{ github.repository }}" --jq '.has_issues' 2>/dev/null | grep -q true; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compare
+        id: compare
+        env:
+          ISSUES_ENABLED: ${{ steps.issues.outputs.enabled }}
+        run: |
+          set -uo pipefail
+          echo "issues_enabled=$ISSUES_ENABLED" >> "$GITHUB_OUTPUT"
+
+          INCOMING=$(git log --oneline upstream/main ^HEAD)
+          if [[ -z "$INCOMING" ]]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "### 上游已是最新" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          COUNT=$(printf '%s\n' "$INCOMING" | grep -c .)
+          # 用 git 自己数，别用 `wc -l`：某些环境的代理会吞掉管道里的 git 输出。
+          FILES=$(git diff --name-only HEAD...upstream/main | grep -c . || true)
+
+          {
+            echo "up_to_date=false"
+            echo "count=$COUNT"
+            echo "files=$FILES"
+            echo "ahead=$(git rev-list --count HEAD ^upstream/main)"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 上游有 $COUNT 个新提交"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| 新提交 | $COUNT |"
+            echo "| 涉及文件 | $FILES |"
+            echo "| 我们的独有提交 | $(git rev-list --count HEAD ^upstream/main) |"
+            echo
+            echo "<details><summary>提交列表</summary>"
+            echo
+            printf '%s\n' "$INCOMING" | head -40 | sed 's/^/    /'
+            echo
+            echo "</details>"
+            echo
+            echo "### 怎么同步"
+            echo
+            echo '```bash'
+            echo "git fetch upstream && git merge --no-ff upstream/main"
+            echo "bash scripts/audit-localization.sh        # 形状检查 + 目录一致性"
+            echo "python3 scripts/translate-missing.py --check   # 占位符完整性"
+            echo "bash scripts/package-adhoc-dmg.sh         # 打 DMG"
+            echo '```'
+            echo
+            echo "**冲突了怎么办**：一律 \`git checkout --theirs\` 取上游，再把 L10n 包装"
+            echo "重新贴回去。冲突的根因是上游改了功能结构、我们把同一行包进了 L10n，"
+            echo "两边做的是不同的事——保留 ours 会丢掉上游的功能，所以取上游。"
+            echo "代价只是那几处界面显示英文，之后补翻译即可。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 上次提醒还没人处理时，不重复开 Issue —— 否则每天一条，很快就把
+      # 通知变成噪音，那还不如不提醒。改成在原 Issue 上留一条评论。
+      #
+      # 这一步需要仓库开启 Issues（Settings → General → Features → Issues）。
+      # 没开就静默跳过：此时 reminder_method 为 none，上面的 run summary
+      # 已经把结果写清楚了，不该因为开不开 Issue 而让整个 job 变红。
+      - name: Open or update the reminder issue
+        if: steps.compare.outputs.up_to_date == 'false' && steps.compare.outputs.issues_enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COUNT: ${{ steps.compare.outputs.count }}
+          FILES: ${{ steps.compare.outputs.files }}
+          AHEAD: ${{ steps.compare.outputs.ahead }}
+        run: |
+          set -uo pipefail
+          # 上次提醒还没关时，只追加评论，不再开新的 —— 每天一条很快就是噪音。
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" \
+            --label upstream-update --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+
+          BODY=$(cat <<EOF
+          上游有 **$COUNT** 个新提交，涉及 $FILES 个文件。我们的独有提交：$AHEAD 个。
+
+          ## 怎么同步
+
+          \`\`\`bash
+          git fetch upstream && git merge --no-ff upstream/main
+          bash scripts/audit-localization.sh
+          python3 scripts/translate-missing.py --check
+          bash scripts/package-adhoc-dmg.sh
+          \`\`\`
+
+          **冲突时**一律以 \`--theirs\` 取上游版本，再把 L10n 包装重新贴回去：
+          冲突的两边做的是不同的事（上游改功能结构、我们包 L10n），
+          保留 ours 会丢掉上游的功能，代价只是那几处暂时显示英文。
+
+          合并后推送即会自动重新构建 DMG。
+          EOF
+          )
+
+          if [[ -n "$EXISTING" ]]; then
+            gh issue comment "$EXISTING" --repo "${{ github.repository }}" --body "$BODY" \
+              || echo "追加评论失败，不影响本次检查结果"
+            echo "已在 #$EXISTING 上追加评论"
+          else
+            gh issue create --repo "${{ github.repository }}" \
+              --title "上游有 $COUNT 个新提交待同步" \
+              --label upstream-update \
+              --body "$BODY" \
+              || echo "开 Issue 失败（可能没开 Issues 功能），结果见 run summary"
+            echo "已开新提醒"
+          fi

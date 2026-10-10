@@ -96,3 +96,8 @@ jobs:
 
       - name: Audit localization
         run: bash scripts/audit-localization.sh
+
+      # 目录一致性只查「键在不在、译了没译」，查不出占位符个数或顺序被改坏
+      # —— 那类错误界面上不崩溃，只是显示错，得单独验。
+      - name: Check placeholder integrity
+        run: python3 scripts/translate-missing.py --check
