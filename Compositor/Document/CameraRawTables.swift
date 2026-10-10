@@ -14,7 +14,15 @@ nonisolated enum CameraRawTables {
     /// 0.5; Whites, Blacks, Saturation and Vibrance, each −100…100 by 25; and Contrast, Highlights and Shadows, each
     /// at the seven `brightnesses` by the seven `adaptiveValues`.
     private static let exposureStart = 81, whitesStart = 102, blacksStart = 111, saturationStart = 120, vibranceStart = 129
-    private static let contrastStart = 138, highlightsStart = 187, shadowsStart = 236, count = 285
+    private static let contrastStart = 138, highlightsStart = 187, shadowsStart = 236
+    /// Then the Color Mixer, luminance, saturation and hue in turn, each for its eight colors (red, orange, yellow,
+    /// green, aqua, blue, purple, magenta); Calibration's red, green and blue hue and saturation; and the parametric
+    /// curve's Shadows, Darks, Lights and Highlights: each −100…100 by 50.
+    private static let mixerStart = 285, calibrationStart = 405, parametricStart = 435
+    /// Then Color Grading: its wheels each at twelve hues (0…330 by 30) and saturations 25, 50 and 100 — the shadow and
+    /// highlight wheels at Blending 0, then all four (shadows, highlights, midtones, global) at 50, then shadows and
+    /// highlights at 100 — and its four luminance sliders (shadows, midtones, highlights, global), −100…100 by 50.
+    private static let gradingStart = 455, gradingLuminanceStart = 743, count = 763
     private static let brightnesses: [Double] = [53, 80, 104, 130, 160, 190, 224]
     private static let adaptiveValues: [Double] = [-100, -50, -25, 0, 25, 50, 100]
 
@@ -49,8 +57,25 @@ nonisolated enum CameraRawTables {
         return tables
     }
 
+    /// Exposure's 21 tables, −5…5 by 0.5, one after another: the lens vignette correction is Exposure by position.
+    static var exposureTables: UnsafePointer<UInt8>? { table(exposureStart) }
+
     private static func table(_ index: Int) -> UnsafePointer<UInt8>? {
         tables.map { UnsafePointer($0 + index * entries) }
+    }
+
+    /// A stage from up to eight tables and their weights.
+    private static func blend(_ parts: [(UnsafePointer<UInt8>?, Double)]) -> CameraRawStage {
+        var stage = CameraRawStage()
+        withUnsafeMutableBytes(of: &stage.table) { tables in
+            let slots = tables.bindMemory(to: UnsafePointer<UInt8>?.self)
+            for (index, part) in parts.prefix(8).enumerated() { slots[index] = part.0 }
+        }
+        withUnsafeMutableBytes(of: &stage.weight) { weights in
+            let slots = weights.bindMemory(to: Float.self)
+            for (index, part) in parts.prefix(8).enumerated() { slots[index] = Float(part.1) }
+        }
+        return stage
     }
 
     /// The two entries of `points` (rising) either side of `value`, and how far it is between them.
@@ -67,9 +92,8 @@ nonisolated enum CameraRawTables {
         let (row, down) = between(brightness, in: brightnesses)
         let (column, across) = between(value, in: adaptiveValues)
         let width = adaptiveValues.count, base = start + row * width + column
-        return CameraRawStage(table: (table(base), table(base + 1), table(base + width), table(base + width + 1)),
-                              weight: (Float((1 - down) * (1 - across)), Float((1 - down) * across),
-                                       Float(down * (1 - across)), Float(down * across)))
+        return blend([(table(base), (1 - down) * (1 - across)), (table(base + 1), (1 - down) * across),
+                      (table(base + width), down * (1 - across)), (table(base + width + 1), down * across)])
     }
 
     /// The two tables either side of `value` on a run of tables `step` apart from `low`, and how far it is between.
@@ -81,18 +105,15 @@ nonisolated enum CameraRawTables {
 
     private static func stage(_ start: Int, _ value: Double, low: Double, step: Double, tables: Int) -> CameraRawStage {
         let (index, fraction) = between(value, low: low, step: step, tables: tables)
-        return CameraRawStage(table: (table(start + index), table(start + index + 1), nil, nil),
-                              weight: (Float(1 - fraction), Float(fraction), 0, 0))
+        return blend([(table(start + index), 1 - fraction), (table(start + index + 1), fraction)])
     }
 
     /// Temperature and Tint: the four grid tables around them, blended.
     static func whiteBalance(temperature: Double, tint: Double) -> CameraRawStage {
         let (row, down) = between(temperature, low: -100, step: 25, tables: 9)
         let (column, across) = between(tint, low: -100, step: 25, tables: 9)
-        return CameraRawStage(table: (table(row * 9 + column), table(row * 9 + column + 1),
-                                      table((row + 1) * 9 + column), table((row + 1) * 9 + column + 1)),
-                              weight: (Float((1 - down) * (1 - across)), Float((1 - down) * across),
-                                       Float(down * (1 - across)), Float(down * across)))
+        return blend([(table(row * 9 + column), (1 - down) * (1 - across)), (table(row * 9 + column + 1), (1 - down) * across),
+                      (table((row + 1) * 9 + column), down * (1 - across)), (table((row + 1) * 9 + column + 1), down * across)])
     }
 
     /// What the adaptive sliders read from the picture before any of them: the mean of each pixel's brightest channel
@@ -108,9 +129,19 @@ nonisolated enum CameraRawTables {
         return Brightness(brightest: out[0] * 255, luminance: out[1] * 255, logBrightest: out[2] * 255)
     }
 
-    /// The stages in Camera Raw's order, leaving out sliders at zero.
+    private static func fifty(_ start: Int, _ value: Double) -> CameraRawStage {
+        stage(start, value, low: -100, step: 50, tables: 5)
+    }
+
+    /// The stages in Camera Raw's order, leaving out sliders at zero: Calibration, then Light and Color, then the
+    /// parametric curve while its dividers are where Photoshop's are measured (with them moved, the curve pass draws it).
     static func stages(for settings: CameraRawSettings, brightness: Brightness) -> [CameraRawStage] {
         var stages: [CameraRawStage] = []
+        let calibration = settings.calibration
+        for (index, value) in [calibration.redHue, calibration.redSaturation, calibration.greenHue, calibration.greenSaturation,
+                               calibration.blueHue, calibration.blueSaturation].enumerated() where value != 0 {
+            stages.append(fifty(calibrationStart + index * 5, value))
+        }
         if settings.exposure != 0 { stages.append(stage(exposureStart, settings.exposure, low: -5, step: 0.5, tables: 21)) }
         if settings.temperature != 0 || settings.tint != 0 {
             stages.append(whiteBalance(temperature: settings.temperature, tint: settings.tint))
@@ -124,6 +155,68 @@ nonisolated enum CameraRawTables {
         if settings.blacks != 0 { stages.append(stage(blacksStart, settings.blacks, low: -100, step: 25, tables: 9)) }
         if settings.saturation != 0 { stages.append(stage(saturationStart, settings.saturation, low: -100, step: 25, tables: 9)) }
         if settings.vibrance != 0 { stages.append(stage(vibranceStart, settings.vibrance, low: -100, step: 25, tables: 9)) }
+        let curve = settings.curve
+        if curve.hasMeasuredDividers {
+            for (index, value) in [curve.shadows, curve.darks, curve.lights, curve.highlights].enumerated() where value != 0 {
+                stages.append(fifty(parametricStart + index * 5, value))
+            }
+        }
+        return stages
+    }
+
+    /// Color Grading as Photoshop's draws it, in the order that composes like its own: the luminance sliders, then the
+    /// global and midtone wheels, then highlights, then shadows. Each wheel blends the tables either side of its hue
+    /// and saturation (below 25 the lower one is no change), and the shadow and highlight wheels between the Blending
+    /// values measured; the midtone and global wheels, measured at Photoshop's default Blending, keep to that. Balance
+    /// strengthens one of those two wheels and weakens the other, which with these tables is a share of saturation,
+    /// fitted to Photoshop's renders at ±50.
+    static func gradingStages(for grading: CameraRawGradingSettings) -> [CameraRawStage] {
+        var stages: [CameraRawStage] = []
+        for (index, wheel) in [grading.shadows, grading.midtones, grading.highlights, grading.global].enumerated()
+            where wheel.luminance != 0 {
+            stages.append(fifty(gradingLuminanceStart + index * 5, wheel.luminance))
+        }
+        let balance = grading.balance / 100
+        let highlightShare = max(0, balance < 0 ? 1 + 1.4 * balance : 1 + 2 * balance)
+        let shadowShare = max(0, balance < 0 ? 1 - 1.2 * balance : 1 - 1.4 * balance)
+        // Blending 0, 50 and 100, and how far between the two either side.
+        let (blendLow, blendUp) = between(grading.blending, in: [0, 50, 100])
+        func section(_ blendIndex: Int, _ wheel: Int) -> Int {
+            switch blendIndex {
+            case 0: return gradingStart + wheel * 36
+            case 1: return gradingStart + 72 + wheel * 36
+            default: return gradingStart + 216 + wheel * 36
+            }
+        }
+        for (wheel, color, share, blends) in [(3, grading.global, 1.0, false), (2, grading.midtones, 1.0, false),
+                                              (1, grading.highlights, highlightShare, true), (0, grading.shadows, shadowShare, true)]
+            where color.saturation * share > 0 {
+            let position = color.hue.truncatingRemainder(dividingBy: 360) / 30
+            let first = Int(position) % 12, second = (first + 1) % 12, around = position - Double(Int(position))
+            let (level, up) = between(color.saturation * share, in: [0, 25, 50, 100])
+            var parts: [(UnsafePointer<UInt8>?, Double)] = []
+            let blendings: [(Int, Double)] = blends ? [(blendLow, 1 - blendUp), (blendLow + 1, blendUp)] : [(1, 1)]
+            for (blendIndex, blendWeight) in blendings {
+                let base = section(blendIndex, wheel)
+                for (hue, hueWeight) in [(first, 1 - around), (second, around)] {
+                    for (saturation, saturationWeight) in [(level, 1 - up), (level + 1, up)] {
+                        parts.append((saturation == 0 ? nil : table(base + hue * 3 + saturation - 1), blendWeight * hueWeight * saturationWeight))
+                    }
+                }
+            }
+            stages.append(blend(parts))
+        }
+        return stages
+    }
+
+    /// The Color Mixer's stages: luminance, then saturation, then hue, the order that composes like Photoshop's.
+    static func mixerStages(for mixer: CameraRawMixerSettings) -> [CameraRawStage] {
+        var stages: [CameraRawStage] = []
+        for (kind, values) in [mixer.luminance, mixer.saturation, mixer.hue].enumerated() {
+            for (color, value) in values.enumerated() where value != 0 {
+                stages.append(fifty(mixerStart + (kind * 8 + color) * 5, value))
+            }
+        }
         return stages
     }
 

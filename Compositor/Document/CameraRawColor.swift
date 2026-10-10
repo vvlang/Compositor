@@ -73,7 +73,14 @@ nonisolated struct CameraRawCurveSettings: Equatable, Sendable {
         return tone
     }
 
-    func toneTable() -> [Float] { (0...255).map { Float(point(parametric(Double($0) / 255), rgb)) } }
+    /// Whether Photoshop's measured tables draw the parametric curve, leaving the curve pass the point curve alone:
+    /// while the dividers are where they were measured, 25, 50 and 75, and Refine Saturation (which the curve pass
+    /// works into the whole curve) is at zero.
+    var hasMeasuredDividers: Bool { shadowSplit == 25 && darkSplit == 50 && lightSplit == 75 && refineSaturation == 0 }
+
+    func toneTable() -> [Float] {
+        (0...255).map { Float(point(hasMeasuredDividers ? Double($0) / 255 : parametric(Double($0) / 255), rgb)) }
+    }
     func channelTable(_ points: [CurvePoint]) -> [Float] { (0...255).map { Float(point(Double($0) / 255, points)) } }
 
     func nudged(_ channel: CameraRawPointChannel, near tone: Double, by delta: Double) -> Self {
@@ -271,9 +278,14 @@ nonisolated extension CameraRawSettings {
         let red = curve.channelTable(curve.red)
         let green = curve.channelTable(curve.green)
         let blue = curve.channelTable(curve.blue)
-        let mixerFloats = mixer.mixerFloats
+        // The eight colors' sliders come from Photoshop's measured tables; the formula's are left at zero, for the
+        // point colors alone.
+        let mixerFloats = [Float](repeating: 0, count: 24)
+        let mixerTable = CameraRawTables.compose(CameraRawTables.mixerStages(for: mixer))
         let pointFloats = mixer.pointFloats
-        let grade = grading.gradeFloats
+        // Color Grading comes whole from Photoshop's measured tables; the formula's wheels are left at zero.
+        let gradeTable = CameraRawTables.compose(CameraRawTables.gradingStages(for: grading))
+        let grade = [Float](repeating: 0, count: 12)
         tone.withUnsafeBufferPointer { toneP in
             red.withUnsafeBufferPointer { redP in
                 green.withUnsafeBufferPointer { greenP in
@@ -285,7 +297,8 @@ nonisolated extension CameraRawSettings {
                                                                   toneP.baseAddress, redP.baseAddress, greenP.baseAddress, blueP.baseAddress,
                                                                   curve.refineSaturation / 100, mixerP.baseAddress,
                                                                   Int32(mixer.points.count), pointP.baseAddress,
-                                                                  gradeP.baseAddress, grading.blending / 100, grading.balance / 100, Int32(visualize))
+                                                                  gradeP.baseAddress, grading.blending / 100, grading.balance / 100, Int32(visualize),
+                                                                  mixerTable, gradeTable, Int32(CameraRawTables.grid))
                                 }
                             }
                         }
