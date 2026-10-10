@@ -19,9 +19,9 @@ struct ImageLayer: Identifiable, Equatable {
     var maskSourceID: UUID?
     var mask: LayerMask?
     var adjustment: LayerAdjustment?
-    /// 由形状工具创建的图层上会设置该项；见 `liveShape`。
+    /// Set on layers the Shape tool made; see `liveShape`.
     var shape: LayerShape?
-    /// 绘制在图层周围的描边与投影，与该图层的像素分开存放。
+    /// A stroke and drop shadow drawn around the layer, kept apart from its pixels.
     var effects: LayerEffects?
     var text: LayerText?
     nonisolated var size: CGSize { transform.size }
@@ -65,9 +65,9 @@ struct CanvasDocument: Equatable {
     let height: Int
     var resolution: Double = 72
     var layers: [ImageLayer] = [] // Bottom to top.
-    /// 用户放置的对齐参考线。随工程保存，也纳入撤销。
+    /// User-placed alignment lines. Saved with the project; undo covers them.
     var guides: [CanvasGuide] = []
-    /// 属于文档的一部分，因此选区变化也在撤销/重做范围内。不写入磁盘。
+    /// Part of the document so undo/redo covers selection changes. Not saved to disk.
     var selection: DocumentSelection?
     var size: CGSize { CGSize(width: width, height: height) }
     init(id: UUID = UUID(), width: Int, height: Int, layers: [ImageLayer] = [], resolution: Double = 72, guides: [CanvasGuide] = []) {
@@ -79,7 +79,7 @@ struct CanvasDocument: Equatable {
         self.guides = guides
     }
 
-    // 几何尺寸上限；光栅内存上限将在图像导入环节一并确定。
+    // Geometry limit; raster memory limits will be established with image import.
     static func validDimension(_ value: String) -> Int? {
         guard let n = Int(value.trimmingCharacters(in: .whitespaces)),
               (1...DocumentLimits.maxSide).contains(n) else { return nil }
@@ -89,11 +89,11 @@ struct CanvasDocument: Equatable {
 
 enum NavigationTool: String, CaseIterable {
     case move, marquee, lasso, wand, crop, brush, spotHealing, cloneStamp, blur, gradient, shape, type, eyedropper, hand, zoom
-    /// 未选择工具 (A)：工具栏中没有选中项，点击画布不会有任何反应。
+    /// No tool (A): nothing in the tool rail is selected and canvas clicks do nothing.
     case idle
-    /// 用笔尖绘制的工具，共用其尺寸、硬度、不透明度与快捷键。
+    /// Tools that paint with the brush tip, sharing its size, hardness, opacity, and keys.
     var isBrushTool: Bool { self == .brush || self == .spotHealing || self == .cloneStamp || self == .blur }
-    /// 绘制和编辑选区的工具，共用修饰键、移动与微调操作。
+    /// Tools that draw and edit selections, sharing modifiers, moving, and nudging.
     var isSelectionTool: Bool { self == .marquee || self == .lasso || self == .wand }
     var symbol: String { self == .type ? "textformat" : self == .eyedropper ? "eyedropper" : self == .marquee ? "rectangle.dashed" : self == .lasso ? "lasso" : self == .wand ? "wand.and.stars" : self == .brush ? "paintbrush.pointed" : self == .spotHealing ? "bandage" : self == .cloneStamp ? "seal" : self == .blur ? "drop" : self == .gradient ? "square.bottomhalf.filled" : self == .shape ? "square.on.circle" : self == .crop ? "crop" : self == .move ? "arrow.up.left.and.arrow.down.right" : self == .hand ? "hand.draw" : "magnifyingglass" }
     var label: String { self == .type ? "Type (T)" : self == .eyedropper ? "Eyedropper (I)" : self == .marquee ? "Marquee (M)" : self == .lasso ? "Lasso (L)" : self == .wand ? "Magic (W) · Tab switches Wand and Object" : self == .brush ? "Brush (B) · Eraser (E)" : self == .spotHealing ? "Spot Healing Brush (J)" : self == .cloneStamp ? "Clone Stamp (S) · Option-click sets the source" : self == .blur ? "Smear (R)" : self == .gradient ? "Gradient (G)" : self == .shape ? "Shape (U) · Shift-U switches Rectangle/Ellipse" : self == .crop ? "Crop (C)" : self == .move ? "Move / Transform (V)" : self == .hand ? "Hand (H)" : "Zoom (Z)" }
@@ -107,14 +107,15 @@ final class EditorSession {
     var showsSampleRing = true
     var adjustmentOriginal: LayerAdjustment?
     var adjustmentEditingID: UUID? { didSet { resumeFileRequests() } }
-    /// 当前打开图层样式面板的图层。
+    /// The layer whose effects panel is open.
     var effectsEditing: LayerEffectSelection?
     var effectsEditingOriginal: LayerEffects?
     var effectSelection: LayerEffectSelection?
     @ObservationIgnored var effectsPreviews = EffectsPreviewCache()
     var projectURL: URL?
-    /// 立即阻止重叠的编辑。UI 不观察它：控件只在操作持续到值得提示时才通过
-    /// `showsBusy` 变暗，因此快速操作（反相、填充、笔触提交）不会让界面闪一下。
+    /// Blocks overlapping edits immediately. Not observed by the UI: controls only dim via
+    /// `showsBusy`, after an operation has run long enough to be worth showing, so quick
+    /// edits (invert, fills, stroke commits) never flash the interface.
     @ObservationIgnored var isProjectBusy = false {
         didSet {
             if !isProjectBusy {
@@ -126,7 +127,7 @@ final class EditorSession {
             updateBusyIndicator()
         }
     }
-    /// 当 `isProjectBusy` 持续超过 `busyIndicatorDelay` 后为 true。
+    /// True once `isProjectBusy` has lasted longer than `busyIndicatorDelay`.
     private(set) var showsBusy = false
     static let busyIndicatorDelay: Duration = .milliseconds(250)
     @ObservationIgnored private var busyIndicatorTask: Task<Void, Never>?
@@ -176,50 +177,50 @@ final class EditorSession {
     var transformEdit: TransformEdit?
     @ObservationIgnored var distortPreviewCache: [UUID: DistortPreviewCache] = [:]
     @ObservationIgnored var distortEffectsCache: [UUID: DistortEffectsCache] = [:]
-    /// 移动刚刚吸附到的文档位置，在持续期间以参考线的形式绘出。
+    /// Document positions a move has just snapped to, drawn as guides while it lasts.
     @ObservationIgnored var snapGuides: (xs: [CGFloat], ys: [CGFloat]) = ([], [])
-    var snappingEnabled = true {
-        didSet {
-            if !snappingEnabled { snapGuides = ([], []) }
-            refreshCanvasPreview?()
-        }
+    /// Crop, resize and selection moves follow View › Snap (⇧⌘;) too: they had a Snap item of their own, which left
+    /// the View menu with two called Snap.
+    var snappingEnabled: Bool {
+        get { snapEnabled }
+        set { snapEnabled = newValue }
     }
-    /// 上一笔画笔结束的位置，因此 Shift-单击会从那里接着画一条直线。
+    /// Where the last brush stroke ended, so a Shift-click paints a straight line on from it.
     @ObservationIgnored var lastBrushPoint: (point: CGPoint, layerID: UUID, mask: Bool)?
-    /// 开启「平滑」时画笔所在的位置——它会拖在指针后面（见 `smoothed`）。
+    /// Where the brush is while Smoothing trails it behind the pointer (see `smoothed`).
     @ObservationIgnored var brushAnchor: CGPoint?
-    /// 指针本身的位置，以便松开按钮后平滑笔触能追上它。
+    /// The pointer itself, so a smoothed stroke can catch up to it when the button is released.
     @ObservationIgnored var brushPointer: CGPoint?
     @ObservationIgnored var maskDistortPreviewCache: MaskDistortPreviewCache?
-    /// 进行中的变换上一次为各图层绘制的圆角矩形，连同绘制时的尺寸。
+    /// The last rounded rectangle drawn for a transform in progress, by layer, with the size it was drawn at.
     @ObservationIgnored var shapeTransformPreviewCache: [UUID: (size: CGSize, image: CGImage)] = [:]
     var locksTransformRatio = true
-    /// 默认关闭：移动工具的按下会拖动当前图层；按住 Cmd（或打开此项）则改为选取指针下的图层er.
+    /// Off by default: a Move-tool press drags the active layer; hold Cmd (or turn this on) to pick the layer under the pointer.
     var transformAutoSelect = ToolDefaults.bool("autoSelect", false) { didSet { ToolDefaults.set(transformAutoSelect, "autoSelect") } }
-    /// 移动工具的变换框与手柄 (⌘H)。隐藏时，在任意位置拖动都只是移动图层；
-    /// 待定的 ⌘T 变换仍会显示其变换框。
+    /// The Move tool's transform box and handles (⌘H). Hidden, a drag anywhere just moves the layer;
+    /// a pending ⌘T transform still shows its box.
     var showsTransformControls = ToolDefaults.bool("transformControls", true) { didSet { ToolDefaults.set(showsTransformControls, "transformControls") } }
-    /// Option-拖动产生的副本，以及拖动之前的选区，以便 Esc 能把它们再撤掉。
+    /// The copies an Option-drag made, and what was selected before it, so Escape can take them away again.
     @ObservationIgnored var transformDuplicate: (copies: [UUID], source: Set<UUID>, primary: UUID?)?
     var brushSettings = BrushSettings() { didSet { refreshGradient() } }
     var spotHealingMode: SpotHealingMode = .contentAware
     var blurMode: BlurToolMode = .liquify
-    /// 画笔的两种模式：绘制铺上前景色，擦除清除像素 (B 与 E)。
+    /// The Brush's two modes: Paint lays down the foreground color, Erase clears pixels away (B and E).
     var brushMode: BrushToolMode = .paint
-    /// 工具栏的图标，随工具所处的模式而变。
+    /// The tool rail's icon, which follows the mode a tool is in.
     func symbol(for tool: NavigationTool) -> String {
         tool == .brush && brushMode == .erase ? "eraser" : tool.symbol
     }
-    /// 魔棒工具的两种模式：魔棒按颜色选取，对象选择描摹指针下的对象 (Tab)。
+    /// The Magic tool's two modes: Wand selects by color, Object traces the object under the pointer (Tab).
     var wandMode: WandMode = .wand
-    /// 仿制图章：Option-单击设定的取样源（文档像素）、其各项设置，以及——笔触开始之后——
-    /// 对齐模式下画笔相对取样源保持的偏移量。
+    /// Clone Stamp: the source Option-click set (document pixels), its options, and — once a
+    /// stroke has started — the offset from brush to source that aligned strokes keep.
     var cloneSource: CGPoint?
     var cloneSettings = CloneSettings()
-    /// 未在使用的那一侧的笔尖设置（尺寸、硬度、不透明度）：仿制图章保有自己的一套，
-    /// 默认是柔边；而画笔与污点修复画笔共用一套。
-    /// 未在使用的那一族画笔的笔尖设置：仿制图章与涂抹各自保有尺寸、硬度和不透明度
-    /// （两者初始都是柔边）；其余画笔共用一套。
+    /// The brush tip (size, hardness, opacity) of the side not in use: Clone Stamp keeps its own,
+    /// soft by default, while Brush and Spot Healing share theirs.
+    /// The tips of the brush families not in use: Clone Stamp and Smear each keep their own size, hardness and
+    /// opacity (both starting soft); the other brushes share one.
     @ObservationIgnored var parkedBrushTips: [Int: (diameter: CGFloat, hardness: CGFloat, opacity: CGFloat)] = [1: (40, 0, 1), 2: (40, 0, 1)]
     private static func tipFamily(_ tool: NavigationTool) -> Int { tool == .cloneStamp ? 1 : tool == .blur ? 2 : 0 }
     @ObservationIgnored var cloneOffset: CGSize?
@@ -233,57 +234,59 @@ final class EditorSession {
     var textDraft: TextDraft? { didSet { if oldValue != nil && textDraft == nil { resumeFileRequests() } } }
     var textDefaults = LayerTextStyle()
     var shapeKind = ShapeKind.rectangle
-    /// 形状工具绘制矩形时的圆角半径（像素）；0 表示保持直角。
+    /// Corner radius in pixels for rectangles the Shape tool draws; 0 keeps the corners square.
     var shapeCornerRadius: Double = 0
-    /// 直线形状的粗细（文档像素）。
+    /// A Line shape's thickness in document pixels.
     var shapeLineWidth: Double = 4
-    /// 用形状工具拖出、尚未成为图层的那个形状。
+    /// The shape being dragged out with the Shape tool, before it becomes a layer.
     var shapeDraft: ShapeDraft?
     var selectionModeChoice = SelectionMode.replace
-    /// 由当前按住的 Shift/Option 所隐含的模式；两者都未按住时为 nil。
+    /// Mode implied by the Shift/Option keys currently held, nil when neither is.
     var heldSelectionMode: SelectionMode?
-    /// 拖动移动开始时的选区状态；整段拖动算作一个撤销步骤。
+    /// The selection as it was when a drag-move began; the drag is one undo step.
     @ObservationIgnored var selectionMoveOrigin: DocumentSelection?
     var pixelMove: PixelMove?
     @ObservationIgnored var pixelClipboard: PixelClipboard?
     @ObservationIgnored var copiedLayer: CopiedLayer?
     var levels: LevelsEdit? { didSet { resumeFileRequests() } }
     var hueSaturation: HueSaturationEdit?
-    /// 当前打开的滤镜（「滤镜」菜单），以及下一次打开时作为起点的设置。
+    /// The open filter (Filter menu), and the settings the next one starts from.
     var filterEdit: FilterEdit?
     var filterSettings = FilterSettings()
+    /// What Filter › Last Filter runs again.
+    var lastFilter: FilterKind?
     @ObservationIgnored var hueSaturationTask: Task<Void, Never>?
-    /// 已有渲染任务进行中时，最新一次预览请求。
+    /// The newest preview request while one is already rendering.
     @ObservationIgnored var hueSaturationPending: HueSaturationJob?
-    /// 面板打开期间，已就位的吸管与指定调整工具。
+    /// The armed eyedropper and the targeted-adjustment tool, while the panel is open.
     var hueSampleMode: HueSampleMode?
     var hueTargeting = false
     @ObservationIgnored var hueTargetDrag: HueTargetDrag?
     var selectionAntialiased = true
-    /// 每次应用羽化时，选区边缘被柔化的程度（文档像素）。
+    /// How far Feather softens the selection's edge each time it is applied, in document pixels.
     var selectionAmountOperation: SelectionAmountOperation? { didSet { resumeFileRequests() } }
-    /// 「选择 > 色彩范围」面板已打开；按「好」之前显示的选区只是预览。
+    /// Select > Color Range's panel is open; the selection shown is its preview until OK.
     var colorRange: ColorRangeEdit? { didSet { resumeFileRequests() } }
-    /// 取色器当前打开于哪个对话框上（`ColorPickerTarget.dialog`）。
+    /// The dialog whose color the picker is open on (`ColorPickerTarget.dialog`).
     @ObservationIgnored var dialogColorChange: ((PaletteColor) -> Void)?
-    /// 某个带独立可缩放预览的对话框已打开（如导出 JPEG）：「显示」菜单的缩放命令会作用于该预览而d.
+    /// A dialog with its own zoomable preview (Export JPEG) is open: the View menu's zoom commands zoom that instead.
     @ObservationIgnored var previewZoom: ((PreviewZoomCommand) -> Void)?
-    /// 字体菜单开始在文字上预览各种字形之前的样式（见 `previewFont`）。
+    /// The text's style before the font menu started previewing faces on it (see `previewFont`).
     @ObservationIgnored var fontPreviewOriginal: LayerTextStyle?
     var selectionFeatherAmount = 2
     var wandSettings = WandSettings()
     var objectSelectionSettings = ObjectSelectionSettings()
     var showsPixelGrid = ToolDefaults.bool("pixelGrid", true) { didSet { ToolDefaults.set(showsPixelGrid, "pixelGrid") } }
-    /// 布局网格（「显示 > 显示 > 网格」）。开启前不生效；与 800% 像素网格相互独立。
+    /// Layout grid (View > Show > Grid). Off until turned on; independent of the 800% pixel grid.
     var showsGrid = ToolDefaults.bool("grid", false) { didSet { ToolDefaults.set(showsGrid, "grid") } }
-    /// 布局网格的间距与分段（「显示 > 网格设置…」）。属于使用者设置，不随工程保存。
+    /// The layout grid's spacing and subdivisions (View > Grid Settings…). The person's, not the project's.
     var layoutGrid = LayoutGrid(spacing: ToolDefaults.int("gridSpacing", 64), subdivisions: ToolDefaults.int("gridSubdivisions", 8)) {
         didSet {
             ToolDefaults.set(layoutGrid.spacing, "gridSpacing")
             ToolDefaults.set(layoutGrid.subdivisions, "gridSubdivisions")
         }
     }
-    /// 布局网格的颜色、线型与不透明度（「显示 > 网格设置…」），同样属于使用者设置。
+    /// The layout grid's color, line style and opacity (View > Grid Settings…), also the person's.
     var gridAppearance = GridAppearance(
         preset: GridAppearance.Preset(rawValue: ToolDefaults.string("gridColor", "")) ?? .lightGray,
         customColor: PaletteColor(hex: ToolDefaults.string("gridCustomColor", "")) ?? GridAppearance().customColor,
@@ -296,39 +299,61 @@ final class EditorSession {
             ToolDefaults.set(gridAppearance.opacity, "gridOpacity")
         }
     }
-    /// 用户参考线。被隐藏的多余参考线不参与吸附。
+    /// User guides. Hidden extras do not snap.
     var showsGuides = ToolDefaults.bool("guides", true) { didSet { ToolDefaults.set(showsGuides, "guides") } }
+    /// F: the canvas alone on black, filling the screen, with every panel and bar put away. F again brings them back.
+    var canvasOnly = false
+    /// Nothing in progress for Escape to cancel (a transform, crop, lasso, shape, gradient, stroke or text), so in
+    /// fullscreen it leaves fullscreen instead.
+    var escapeHasNothingToCancel: Bool {
+        textDraft == nil && levels == nil && brushStroke == nil && warpStroke == nil && lassoDraft == nil
+            && shapeDraft == nil && gradientEdit == nil && cropRect == nil && guideDrag == nil && transformEdit == nil
+            && pixelMove == nil
+    }
+    /// Canvas Only can be switched: there's a canvas, and no text layer being typed or dialog open (Hue/Saturation,
+    /// Curves, the color picker…) for an F to belong to.
+    var canToggleCanvasOnly: Bool {
+        document != nil && textDraft == nil && filterEdit == nil && hueSaturation == nil && levels == nil
+            && colorPicker == nil && adjustmentEditingID == nil && effectsEditing == nil && colorRange == nil
+            && selectionAmountOperation == nil
+    }
     var showsRulers = ToolDefaults.bool("rulers", false) { didSet { ToolDefaults.set(showsRulers, "rulers") } }
-    /// 吸附总开关（「显示 > 吸附」）。打开它，今天设置的图层/画布吸附才能继续生效。
-    var snapEnabled = ToolDefaults.bool("snap", true) { didSet { ToolDefaults.set(snapEnabled, "snap") } }
+    /// Master snap switch (View > Snap). On so today's layer/canvas snap keeps working.
+    var snapEnabled = ToolDefaults.bool("snap", true) {
+        didSet {
+            ToolDefaults.set(snapEnabled, "snap")
+            if !snapEnabled { snapGuides = ([], []) }
+            refreshCanvasPreview?()
+        }
+    }
     var snapToGuides = ToolDefaults.bool("snapGuides", true) { didSet { ToolDefaults.set(snapToGuides, "snapGuides") } }
     var snapToGrid = ToolDefaults.bool("snapGrid", false) { didSet { ToolDefaults.set(snapToGrid, "snapGrid") } }
     var snapToLayers = ToolDefaults.bool("snapLayers", true) { didSet { ToolDefaults.set(snapToLayers, "snapLayers") } }
     var snapToDocumentBounds = ToolDefaults.bool("snapBounds", true) { didSet { ToolDefaults.set(snapToDocumentBounds, "snapBounds") } }
     var locksGuides = ToolDefaults.bool("lockGuides", false) { didSet { ToolDefaults.set(locksGuides, "lockGuides") } }
     var guideDrag: GuideDrag?
-    /// 「扩展 / 收缩」按钮每次让选区增减的像素数。
+    /// Pixels the Expand / Contract buttons grow or shrink the selection by.
     var selectionExpandAmount = 1
     var selectionContractAmount = 1
     @ObservationIgnored var pendingOpacityDigit: (digit: Int, time: TimeInterval)?
     var colorPicker: ColorPickerState?
     var brushError: String?
     var brushRevision = 0
-    /// UI 不观察它，因此控件不会在每一笔的持续期间都变暗；
-    /// 一笔之内始终沿用开始时的设置，所以笔触中途做的修改不会产生意外后果。
+    /// Not observed by the UI, so controls don't dim for the length of every stroke;
+    /// a stroke keeps the settings it started with, so edits made mid-stroke are harmless.
     @ObservationIgnored var brushStroke: BrushStroke? { didSet { resumeFileRequests() } }
-    /// 正在进行的一笔涂抹或液化。
+    /// A Smudge or Liquify stroke in progress.
     @ObservationIgnored var warpStroke: WarpStroke? { didSet { resumeFileRequests() } }
 
     var canTransform: Bool {
         guard canEditLayers else { return false }
-        // 选中的多个图层，或某个文件夹的内容，作为一个整体一起变换。
+        // Several selected layers, or a folder's contents, transform together.
         if transformsAsGroup { return !groupTransformMembers.isEmpty }
         return activeLayer?.asset != nil && activeLayer?.isGroup == false && activeLayerID.map { document?.effectiveVisibleIDs.contains($0) == true } == true
     }
-    /// 选中了多个图层，或一个文件夹：变换会把它们（文件夹连同其全部内容）作为一个整体一起移动。
+    /// Several layers selected, or a folder: the transform moves them (a folder, everything in it) together in one box.
     var transformsAsGroup: Bool { selectedLayerIDs.count > 1 || (selectedLayerIDs.count == 1 && activeLayer?.isGroup == true) }
-    /// 组合变换所作用的图层：被选中的可见像素图层，以及被选中文件夹内部的图层。
+    /// What a group transform moves: the visible pixel layers selected and inside selected folders.
     var groupTransformMembers: [ImageLayer] {
         guard transformsAsGroup, let document else { return [] }
         let parents = Dictionary(uniqueKeysWithValues: document.layers.map { ($0.id, $0.parentID) })
@@ -344,7 +369,7 @@ final class EditorSession {
             return false
         }
     }
-    /// 包围 `groupTransformMembers` 的轴对齐矩形。
+    /// The upright box around `groupTransformMembers`.
     var groupTransformBox: LayerTransform? {
         let points = groupTransformMembers.flatMap { DistortWarp.corners(of: $0.transform) }
         guard let minX = points.map(\.x).min(), let maxX = points.map(\.x).max(),
@@ -357,6 +382,7 @@ final class EditorSession {
         guard brushStroke == nil, warpStroke == nil, levels == nil else { return }
         if id != activeLayerID { commitTransform(); resolveGradient() }
         activeLayerID = id
+        revealActiveLayer()
     }
     func selectTool(_ value: NavigationTool) {
         if tool != value, !finishText() { return }
@@ -376,7 +402,7 @@ final class EditorSession {
         if value == .crop, cropRect == nil, let document {
             cropRatioChoice = "Free"
             let canvas = CGRect(origin: .zero, size: document.size)
-            // 有选区时裁剪从其边界开始，与 Photoshop 一致：按 C，再按 Return 即裁到该选区。
+            // With a selection, the crop starts at its bounds, as Photoshop's does: C, then Return, crops to it.
             if let selection, !selection.isEmpty {
                 let bounds = selection.path.boundingBoxOfPath.integral.intersection(canvas)
                 cropRect = CropGeometry.valid(bounds) ? bounds : canvas
@@ -385,8 +411,8 @@ final class EditorSession {
             }
         }
     }
-    /// Tab 在当前工具自己的各模式之间循环——也就是工具栏最左侧的那项设置。
-    /// 没有模式的工具（移动、裁剪、文字、吸管、抓手、缩放）会忽略它。
+    /// Tab steps the current tool through its own modes — the setting sitting at the left of its tool bar. Tools
+    /// without modes (Move, Crop, Type, Eyedropper, Hand, Zoom) ignore it.
     func cycleToolMode() {
         guard !isProjectBusy, brushStroke == nil, warpStroke == nil else { return }
         func next<T: CaseIterable & Equatable>(_ value: T) -> T where T.AllCases.Index == Int {
@@ -419,7 +445,7 @@ final class EditorSession {
                 group: TransformGroup(box: box, originals: Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0.transform) })))
             return
         }
-        // 未链接的蒙版在选中时单独参与变换；已链接时图层与蒙版一起移动。
+        // An unlinked mask, when selected, transforms on its own; linked, layer and mask move together.
         let maskAlone = isMaskSelected && layer.mask?.isLinked == false
         transformEdit = TransformEdit(layerID: layer.id, draft: maskAlone ? layer.maskTransform : layer.transform,
                                       persistent: persistent, mask: maskAlone)
@@ -428,18 +454,18 @@ final class EditorSession {
         guard value.isValid, transformEdit != nil else { return }
         transformEdit?.draft = value
     }
-    /// Option-拖动会复制所选的根图层及其所有后代，并拖动这些副本。
+    /// Option-drag duplicates selected roots with their descendants and drags the copies.
     func beginDuplicateTransform() {
         guard transformDuplicate == nil, let primary = activeLayerID else { return }
         commitTransform()
         guard canTransform else { return }
         let selection = selectedLayerIDs
-        // 从底到顶遍历，使副本保持原有顺序。
+        // Bottom to top, so the copies keep the order they had.
         let carried = selection.reduce(into: Set<UUID>()) { $0.formUnion(descendantIDs(of: $1)) }
         let targets = (document?.layers ?? []).filter { selection.contains($0.id) && !carried.contains($0.id) }.map(\.id)
         guard !targets.isEmpty else { return }
         beginEdit(targets.count > 1 ? "Duplicate Layers" : "Duplicate Layer")
-        // 与「复制图层」的堆叠方式一致：多个副本一起放在最上方的原图层之上。
+        // Stacked as Duplicate Layer stacks them: several together above the topmost original.
         duplicateLayers(targets)
         let copies = selectedLayerIDs.subtracting(selection)
         guard !copies.isEmpty else { endEdit(); selectLayers(selection, primary: primary); return }
@@ -457,7 +483,7 @@ final class EditorSession {
         }
         transformEdit = nil
         if let floating = edit.floating {
-            // 未改变的情况：原样恢复，避免柔边选区出现接缝。
+            // Unchanged: restore exactly, so soft selection edges never pick up a seam.
             if edit.draft == floating.original && edit.corners == nil { cancelFloatingTransform(floating) }
             else { mergeFloatingTransform(edit, floating) }
             return
@@ -503,7 +529,7 @@ final class EditorSession {
         }
         if let floating = edit.floating { cancelFloatingTransform(floating) }
     }
-    /// 变换所放置的像素——也就是 100% 缩放下 1:1 绘制的部分。没有像素的图层为 nil。
+    /// Pixels the transform places — what 100% scale draws 1:1. Nil for a layer without pixels.
     var transformPixelSize: CGSize? {
         if let group = transformEdit?.group { return group.box.size }
         if transformEdit == nil, transformsAsGroup { return groupTransformBox?.size }
@@ -514,20 +540,20 @@ final class EditorSession {
     }
     func displayedTransform(for layer: ImageLayer) -> LayerTransform {
         if let pending = pendingTransform(for: layer) { return pending }
-        // 超出图层边界的内容识别填充，会在扩展后的图层上预览。
+        // Content-Aware Fill past the layer's edge previews on the grown layer.
         if let edit = filterEdit, let grown = edit.preparedTransform, edit.previewImage(for: layer.id) != nil { return grown }
         return layer.transform
     }
-    /// 变换是否只作用于当前图层的蒙版（在图层面板中选中了未链接的蒙版）。
+    /// Whether transforming places only the active layer's mask (an unlinked mask selected in the Layers panel).
     var transformTargetsMask: Bool { transformEdit.map(\.mask) ?? (isMaskSelected && activeLayer?.mask?.isLinked == false) }
-    /// `layer` 的变换手柄所在位置：待定编辑的草稿——该图层或其蒙版的——否则就是该图层本身。
+    /// Where `layer`'s transform handles sit: the pending edit's draft — the layer's or its mask's — else the layer.
     func editedTransform(for layer: ImageLayer) -> LayerTransform {
         if transformEdit?.layerID == layer.id { return transformEdit!.draft }
         if transformEdit == nil, layer.id == activeLayerID, transformsAsGroup, let box = groupTransformBox { return box }
         return layer.id == activeLayerID && transformTargetsMask ? layer.maskTransform : layer.transform
     }
-    /// 待定编辑下某图层的变换：被编辑图层的草稿；组合中的每个图层则沿用包围盒；
-    /// 若该编辑不移动它，则为 nil。
+    /// A layer's transform under the pending edit: the draft for the edited layer, carried along with the box for
+    /// each layer of a group; nil when the edit doesn't move it.
     func pendingTransform(for layer: ImageLayer) -> LayerTransform? {
         guard let edit = transformEdit, !edit.mask else { return nil }
         if let group = edit.group { return group.originals[layer.id].map { $0.following(from: group.box, to: edit.draft) } }
@@ -549,16 +575,18 @@ final class EditorSession {
     var importError: String? { didSet { resumeFileRequests() } }
     var showsConversionSheet = false { didSet { resumeFileRequests() } }
     var conversionRequest: PSDConversionRequest?
-    /// 测试会赋此值以跳过转换确认面板。
+    /// Tests assign this to skip the conversion sheet.
     @ObservationIgnored var confirmConversions: (([PSDConversion]) async -> Bool)?
-    /// 正在显影的 RAW 文件，以及该面板正在编辑的设置（见 RawImporter）。
+    /// The RAW file being developed, and the settings the sheet is editing (see RawImporter).
     var rawDevelop: (url: URL, settings: RawDevelopSettings)?
     var showsRawDevelop = false { didSet { resumeFileRequests() } }
+    /// Import was pressed and the full frame is developing: the sheet stays up, showing that, until the layer is in.
+    var rawImporting = false
     @ObservationIgnored private var rawContinuation: CheckedContinuation<RawDevelopSettings?, Never>?
-    /// 测试会赋此值以在不显示面板的情况下直接显影。
+    /// Tests assign this to develop without a sheet.
     @ObservationIgnored var confirmRawDevelop: ((URL, RawDevelopSettings) async -> RawDevelopSettings?)?
 
-    /// 弹出显影面板并等待用户的选择；返回 nil 表示导入被取消。
+    /// Puts the develop sheet up and waits for the choice; nil means the import was cancelled.
     func developRaw(_ url: URL) async -> RawDevelopSettings? {
         let asShot = RawImporter.asShot(url) ?? RawDevelopSettings()
         if let confirmRawDevelop { return await confirmRawDevelop(url, asShot) }
@@ -569,24 +597,30 @@ final class EditorSession {
         }
     }
     func finishRawDevelop(_ settings: RawDevelopSettings?) {
-        showsRawDevelop = false
-        rawDevelop = nil
-        Task { await RawImporter.Queue.shared.release() }
+        // Importing, the sheet waits for the develop to finish (see `endRawDevelop`); cancelling closes it now.
+        if settings != nil, rawContinuation != nil { rawImporting = true } else { endRawDevelop() }
         let continuation = rawContinuation
         rawContinuation = nil
         continuation?.resume(returning: settings)
     }
+    /// Closes the develop sheet once the RAW is in, or when it was cancelled.
+    func endRawDevelop() {
+        showsRawDevelop = false
+        rawImporting = false
+        rawDevelop = nil
+        Task { await RawImporter.Queue.shared.release() }
+    }
     @ObservationIgnored private var conversionContinuation: CheckedContinuation<Bool, Never>?
-    /// 在 Photoshop 文件仍在读取时按下了取消。
+    /// Cancel pressed while a Photoshop file was still being read.
     @ObservationIgnored private var conversionCancelled = false
     var opacityEditLayerID: UUID?
     var blendPreview: (layerID: UUID, mode: LayerBlendMode)?
     @ObservationIgnored var refreshCanvasPreview: (() -> Void)?
     var isMaskSelected = false { didSet { if !isMaskSelected { viewsMaskAlone = false } } }
-    /// 在蒙版缩略图上 Option-单击：画布会以灰度单独显示目标蒙版，使其不受其他内容干扰地
-    /// 被绘制，与 Photoshop 的做法相同。改为针对图层像素或另一个图层时即结束该状态。
+    /// Option-click on a mask thumbnail: the canvas shows the targeted mask by itself, in grayscale, so it can be
+    /// painted with nothing else in the way, as in Photoshop. Targeting the layer's pixels, or another layer, ends it.
     var viewsMaskAlone = false
-    /// 画布正单独显示其蒙版的那个图层；普通合成时为 nil。
+    /// The layer whose mask the canvas is showing by itself; nil for the ordinary composite.
     var maskAloneLayer: ImageLayer? {
         guard viewsMaskAlone, isMaskSelected, let layer = activeLayer, layer.mask != nil else { return nil }
         return layer
@@ -609,7 +643,7 @@ final class EditorSession {
     var canRedo: Bool { canUseHistory && history.canRedo }
 
     func undo() {
-        // 与 Photoshop 一样，第一次撤销会丢弃待定的渐变。
+        // Like Photoshop, the first Undo discards a pending gradient.
         if gradientEdit != nil { cancelGradient(); return }
         guard canUndo, let snapshot = history.undo() else { return }
         restore(snapshot)
@@ -623,7 +657,8 @@ final class EditorSession {
     private func restore(_ snapshot: DocumentHistory.Snapshot) {
         cancelCrop()
         cancelGradient()
-        let changedCanvas = document?.id != snapshot.document?.id
+        // A different canvas, or this one at another size (a rotation), is fitted to the window again.
+        let changedCanvas = document?.id != snapshot.document?.id || document?.size != snapshot.document?.size
         let keepMaskTarget = isMaskSelected && activeLayerID == snapshot.activeLayerID
         document = snapshot.document
         activeLayerID = snapshot.activeLayerID
@@ -631,14 +666,23 @@ final class EditorSession {
         if changedCanvas, let document { viewport.fit(documentSize: document.size) }
     }
 
-    /// 可嵌套的事务边界；未来的工具可以用它把一个完整手势归为一组。
-    /// 名称以未翻译的形式保存，这样切换语言后菜单也能跟着变。
+    /// Nestable transaction boundary; future tools can group a complete gesture.
     func beginEdit(_ name: String.LocalizationValue) {
         history.begin(name, document: document, selection: activeLayerID)
     }
 
     func endEdit() { history.end(document: document, selection: activeLayerID) }
     var activeLayer: ImageLayer? { document?.layers.first { $0.id == activeLayerID } }
+    /// How the Layers panel looks: grayed for what lasts (a dialog, a pending transform, crop or gradient, a long
+    /// operation), but not for what only lasts while the mouse is down (a stroke, a move or Auto Select drag, moving
+    /// pixels) or for a moment's work, which flashed the whole panel gray for a frame. `canEditLayers` still blocks
+    /// layer changes through all of them; the panel's actions check it themselves.
+    var layersLookEditable: Bool {
+        selectionAmountOperation == nil && colorRange == nil && textDraft == nil && document != nil && !showsBusy
+            && !isImporting && !showsNewDocument && !showsImporter && renamingLayerID == nil
+            && transformEdit?.persistent != true && cropRect == nil && gradientEdit == nil
+            && hueSaturation == nil && levels == nil && filterEdit == nil && adjustmentEditingID == nil
+    }
     var canEditLayers: Bool {
         _ = showsBusy
         return selectionAmountOperation == nil && colorRange == nil && textDraft == nil && document != nil && brushStroke == nil && warpStroke == nil && !isProjectBusy && !isImporting && !showsNewDocument && !showsImporter && renamingLayerID == nil && transformEdit == nil && cropRect == nil && gradientEdit == nil && pixelMove == nil && hueSaturation == nil && levels == nil && filterEdit == nil && adjustmentEditingID == nil
@@ -653,7 +697,7 @@ final class EditorSession {
         layer.parentID = activeLayer?.isGroup == true ? activeLayerID : activeLayer?.parentID
         if let parent = layer.parentID { collapsedGroupIDs.remove(parent) }
         var insertion = document.layers.firstIndex { $0.id == activeLayerID }.map { $0 + 1 } ?? document.layers.count
-        // 选中了文件夹时，图层进入该文件夹的顶部：就在其最后一个（最上层的）内容之上。
+        // With a folder selected the layer goes to the top of the folder: just above its last (topmost) contents.
         if activeLayer?.isGroup == true, let folder = activeLayerID {
             let parents = Dictionary(uniqueKeysWithValues: document.layers.map { ($0.id, $0.parentID) })
             func isInside(_ id: UUID) -> Bool {
@@ -684,11 +728,11 @@ final class EditorSession {
         if let activeLayerID { deleteLayer(activeLayerID) }
     }
 
-    /// 把所有选中的图层作为一个撤销步骤删除（选中文件夹时会连同其内容一起删除）；
-    /// 只选中一个图层时，则只删该图层。
+    /// Deletes every selected layer as one undo step (a selected folder takes its contents); with one
+    /// layer selected, just that one.
     func deleteSelectedLayers() {
         guard canEditLayers, let document else { return }
-        // 先取快照：删除操作会改变当前图层，从而重置选区。
+        // Captured first: deleting moves the active layer, which resets the selection.
         let ids = document.layers.map(\.id).filter(selectedLayerIDs.contains)
         guard ids.count > 1 else { deleteActiveLayer(); return }
         guard !deleteWithLiveMaskChoice(ids) else { return }
@@ -710,8 +754,8 @@ final class EditorSession {
         document?.layers[index].isVisible.toggle()
     }
 
-    /// Photoshop 的眼睛横扫：按下某个眼睛可显示或隐藏该图层，拖过其他眼睛则把它们设为同一状态，
-    /// 整体算作一个撤销步骤（按下时 `beginEdit`，松开时 `endEdit`）。
+    /// Photoshop's eye swipe: pressing an eye shows or hides that layer, and dragging over other eyes gives them the
+    /// same state, all as one undo step (`beginEdit` at the press, `endEdit` when the button comes up).
     func beginVisibilitySwipe(_ id: UUID) -> Bool? {
         guard canEditLayers, let layer = document?.layers.first(where: { $0.id == id }) else { return nil }
         let visible = !layer.isVisible
@@ -729,7 +773,7 @@ final class EditorSession {
     func reorderLayers(from offsets: IndexSet, to destination: Int) {
         guard canEditLayers, var layers = document?.layers.reversed().map({ $0 }),
               offsets.allSatisfy({ layers.indices.contains($0) }), (0...layers.count).contains(destination) else { return }
-        // 列表顺序是从上到下；合成器内部则按从底到顶存储。
+        // List order is top-to-bottom; the compositor stores bottom-to-top.
         layers.move(fromOffsets: offsets, toOffset: destination)
         beginEdit("Reorder Layers")
         defer { endEdit() }
@@ -764,7 +808,7 @@ final class EditorSession {
         if brushStroke != nil { await finishBrush() }
         cancelCrop()
         commitTransform()
-        // 在请求排队等待解码完成期间，保持沙盒授权。
+        // Hold sandbox grants while requests wait behind an in-progress decode.
         let files = urls.map { (url: $0, scoped: $0.startAccessingSecurityScopedResource()) }
         await waitForProjectAccess()
         await withCheckedContinuation { completion in
@@ -782,7 +826,7 @@ final class EditorSession {
           let request = pendingImports.removeFirst()
           let psdOnly = request.files.allSatisfy { PSDReader.matches($0.0) }
           beginEdit(psdOnly ? "Import Photoshop File" : "Import Images")
-          // 尚无文档：第一张成功导入的图像决定画布大小，与拖放位置无关。
+          // No document: the first successful image determines the canvas, regardless of drop point.
           let point = document == nil ? nil : request.point
           for (url, scoped) in request.files {
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -797,7 +841,8 @@ final class EditorSession {
                     guard size.width <= DocumentLimits.maxSide, size.height <= DocumentLimits.maxSide,
                           size.width * size.height <= DocumentLimits.documentPixelBudget - usedPixels else { throw ImageImportError.tooLarge }
                     guard let settings = await developRaw(url) else { continue }
-                    // 耗时以秒计：必须离开主 actor，否则按下导入会让窗口卡死。
+                    defer { if rawImporting { endRawDevelop() } }
+                    // Seconds of work: off the main actor, or pressing Import freezes the window.
                     guard let developed = await RawImporter.Queue.shared.develop(url, settings: settings, limit: nil)
                     else { throw ImageImportError.unreadable }
                     let thumbnail = try PixelAdjust.thumbnail(of: developed)
@@ -812,8 +857,8 @@ final class EditorSession {
                     let imported: PSDImport
                     do {
                         let parsed = try await ImageImporter.shared.loadPhotoshop(url, remainingPixels: DocumentLimits.documentPixelBudget - usedPixels)
-                        // 仅当它只是背景时：Photoshop 不写任何图层记录，只有合并后的图像，
-                        // 因此导入的也就是它，作为单个图层。
+                        // Only a background: Photoshop writes no layer records, just the merged image, so that is
+                        // what comes in, as one layer.
                         if parsed.layers.isEmpty {
                             endPSDReading()
                             let asset = try await ImageImporter.shared.decode(url, remainingPixels: DocumentLimits.documentPixelBudget - usedPixels,
@@ -862,8 +907,8 @@ final class EditorSession {
         activeLayerID = layer.id
     }
 
-    /// 在读取文件之前就弹出面板，避免大 PSD 让这次点击毫无回应。
-    /// `finishPSDReading` 负责填入内容；若无可报告的内容，则把面板撤下。
+    /// Puts the sheet up before the file is read, so a big PSD doesn't leave the click unanswered.
+    /// `finishPSDReading` fills it in, or takes it away when there is nothing to report.
     func beginPSDReading(title: String, confirmTitle: String) {
         guard confirmConversions == nil else { return }
         conversionCancelled = false
@@ -883,7 +928,7 @@ final class EditorSession {
             conversionRequest?.isReading = false
         }
     }
-    /// 在没有结论的情况下撤下面板：要么无可报告的内容，要么读取失败。
+    /// Takes the sheet away without an answer: nothing to report, or the read failed.
     func endPSDReading() {
         guard conversionContinuation == nil else { return }
         showsConversionSheet = false
@@ -944,20 +989,35 @@ final class EditorSession {
         activeLayerID = group.id
     }
 
-    /// `emptyLayer` 以一个选中的空白「图层 1」启动画布，与「文件 > 新建」一致。
-    func createDocument(width: Int, height: Int, emptyLayer: Bool = false) {
+    /// `emptyLayer` starts the canvas with a selected blank "Layer 1", as File > New does.
+    /// `background`: white or black fills the first layer, named Background as in Photoshop; nil leaves it transparent.
+    func createDocument(width: Int, height: Int, emptyLayer: Bool = false, resolution: Double = 72, background: CGColor? = nil) {
         guard !isProjectBusy, !isImporting, (1...DocumentLimits.maxSide).contains(width), (1...DocumentLimits.maxSide).contains(height) else { return }
         commitTransform()
         beginEdit("New Canvas")
         defer { endEdit() }
-        var document = CanvasDocument(width: width, height: height)
-        let layer = emptyLayer ? ImageLayer(name: "Layer 1", blankSize: document.size) : nil
+        var document = CanvasDocument(width: width, height: height, resolution: (1...9600).contains(resolution) ? resolution : 72)
+        let layer = emptyLayer ? Self.firstLayer(size: document.size, background: background) : nil
         if let layer { document.layers = [layer] }
         self.document = document
         activeLayerID = layer?.id
         renamingLayerID = nil
         viewport.fit(documentSize: document.size)
         showsNewDocument = false
+    }
+
+    /// A new canvas's layer: empty, or filled with the background color in full-size pixels, so painting on it keeps
+    /// every pixel's detail.
+    private static func firstLayer(size: CGSize, background: CGColor?) -> ImageLayer {
+        guard let background, let context = try? BrushRaster.context(width: Int(size.width), height: Int(size.height), mask: false)
+        else { return ImageLayer(name: "Layer 1", blankSize: size) }
+        context.setFillColor(background)
+        context.fill(CGRect(origin: .zero, size: size))
+        guard let image = context.makeImage(), let thumbnail = try? PixelAdjust.thumbnail(of: image)
+        else { return ImageLayer(name: "Layer 1", blankSize: size) }
+        var layer = ImageLayer(name: "Background", blankSize: size)
+        layer.asset = ImportedImage(image: image, thumbnail: thumbnail, name: "Background")
+        return layer
     }
 
     func fit() {
@@ -970,7 +1030,7 @@ final class EditorSession {
         viewport.setZoom(value, anchoredAt: anchor ?? viewport.center, documentSize: document.size)
     }
 
-    /// 在保持视图中心不变的前提下，逐级切换键盘缩放档位。
+    /// Step through stable keyboard zoom levels while keeping the viewport center fixed.
     enum PreviewZoomCommand { case zoomIn, zoomOut, fit, actual }
 
     func zoomKeyboard(by step: Int) {

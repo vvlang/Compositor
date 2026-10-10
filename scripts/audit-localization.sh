@@ -44,8 +44,10 @@ report "没有对存储/身份字符串做本地化" "" \
   '(name|group|title|rawValue): *String\(localized:|rawValue *= *String\(localized:'
 
 # rawValue 直接送进显示位置：这类不进目录，查表永远命不中。
-# CanvasPreset 的 title 是产品名（4K / iPhone 18 Pro），有��不译。
-report "没有把 rawValue 直接当文案显示" 'CanvasPreset|\$0\.title' \
+# CanvasPreset 的 title 是产品名（4K / iPhone 18 Pro），有无不译。
+# ExportFormat 是文件格式名（PNG / JPEG / PDF），NewCanvasUnit 是量纲缩写
+# （px / in / cm / mm）—— 都是记号而非句子，各语言写法相同。
+report "没有把 rawValue 直接当文案显示" 'CanvasPreset|ExportFormat|NewCanvasUnit|unit\.rawValue|\$0\.title' \
   'Text\([^)]*\.rawValue\)'
 
 # 三元表达式在 Swift 里只能是 String，拿不到 LocalizedStringKey。

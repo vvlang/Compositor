@@ -1,17 +1,15 @@
 # Compositor
 
-> 🌐 **English**：[README.zh-CN.md](README.zh-CN.md) ｜ 简体中文（当前文件）
+Adobe Photoshop costs too much and tools like GIMP don’t feel familiar enough for me to stay in flow. That’s why I built Compositor.
 
-Adobe Photoshop 太贵，而 GIMP 那类工具的体验又不够贴近 Photoshop，让我的创作流总是被打断。正因如此，我建了 Compositor。
+The goal was to create a full-featured image editor that is completely free and open source. I used to use Photoshop for compositing and post-processing, so Compositor is built around that workflow - with the tools needed to create a pixel-perfect final image.
 
-目标是做一个完全免费开源的全功能图像编辑器。我过去一直用 Photoshop 做合成与后期，所以 Compositor 是围绕这条工作流来设计的——一切工具都为能做出像素级精确的成片服务。
+Because it’s open source, you can download the Xcode project and add, remove, or modify any feature to fit your workflow.
 
-因为它是开源的，你可以下载 Xcode 工程，按自己的需要增删或修改任何功能。
+## Installation
 
-## 安装
-
-### 下载
-从 [robbietilton.com/compositor](https://robbietilton.com/compositor) 获取 Compositor，或直接从 [GitHub Releases](https://github.com/robbietilton/Compositor/releases/latest) 下载最新发布版。
+### Download
+Get Compositor from [robbietilton.com/compositor](https://robbietilton.com/compositor), or download the latest release directly from [GitHub Releases](https://github.com/robbietilton/Compositor/releases/latest).
 
 ### Homebrew
 
@@ -19,228 +17,93 @@ Adobe Photoshop 太贵，而 GIMP 那类工具的体验又不够贴近 Photoshop
 brew install --cask robbietilton-compositor
 ```
 
-### 本仓库构建的 DMG：如何绕过 Gatekeeper
+## Features
 
-> 如果你用的是**上游官方发布版**，跳过这一节——它有 Developer ID 签名并已公证，开箱即用。
+### Layers
+- Layers and folders, with opacity and Photoshop's full set of blend modes in its order — a folder's opacity dims everything inside it
+- Layer masks: paint, fill, invert, blur and feather them anywhere on the canvas, past the layer's own pixels; link or unlink them to transform a mask on its own
+- Clipping masks and folder masks
+- Adjustment layers: Hue/Saturation, Levels, Curves, Exposure, Gradient Map, Grain, Black & White, Color Balance, Invert, Gaussian Blur, Motion Blur and Noise
+- Layer effects: Stroke, Drop Shadow, Color Overlay, Inner Shadow, Outer Glow and Inner Glow, rendered on the GPU and editable at any time
+- Merge Down, Merge Layers and Merge Group (⌘E)
+- Duplicate, rename inline, reorder and nest by drag and drop; Option-drag to duplicate; a right-click menu in the Layers panel
+- Copy and paste whole layers and folders (⌘C/⌘V with no selection), within a project or between projects, or drag them between projects
 
-本仓库提供的 `dist/Compositor-<version>.dmg` 是用 `scripts/package-adhoc-dmg.sh` 构建的，
-**没有 Apple 开发者证书**（ad-hoc 签名，也未经公证）。因此 Gatekeeper 会拦截它，
-双击打开会提示：
+### Transform
+- Non-destructive move, scale, rotate and flip — images keep their full resolution however small you make them
+- Free distort (⌘-drag a handle), with Shift to lock to an axis
+- Transform several layers, or a whole folder, together
+- Snapping to canvas and layer edges and centers, with guides
+- Exact values for position, size, scale and angle, stepped with the arrow keys
+- Flip Layer and Flip Canvas, horizontal and vertical
 
-> 「无法验证开发者」／「Compositor 已损坏，无法打开」
+### Selections
+- Rectangle and Ellipse Marquee, Freehand and Polygonal Lasso, and the Magic tool — Wand selects by color, Object traces whatever you click (Tab switches)
+- Select Subject, and Expand, Contract and Feather on any selection
+- Add to and subtract from selections, move the outline, or move and duplicate the pixels inside
+- Load a layer's pixels or a mask as a selection
+- Content-Aware Fill, which can also extend an image past its edges
 
-这是**预期行为，不是文件损坏**——签名是完整的，只是没有 Apple 背书。
-macOS 对未签名的下载内容一律拦截，无法通过双击绕过。三种解法，任选其一：
+### Painting and retouching
+- Brush with size, hardness, opacity and smoothing, in Paint or Erase mode (B and E), and Shift for straight lines
+- Spot Healing Brush (content-aware)
+- Clone Stamp, aligned or not, sampling one layer or all of them
+- Blur tool, on pixels or masks
+- Gradient tool and Shape tool (rectangles, rounded rectangles, ellipses and lines), which stay editable rather than being rasterized
+- Type tool (T): inline multiline editing in draggable, resizable paragraph boxes; font, size, color, alignment and spacing in the tool header; transform text and use it as a clipping mask
+- Eyedropper and a full color picker
 
-**方法一：右键 → 打开（推荐，最省事）**
+### Adjustments and filters
+- Camera Raw filter: light, color, curves, color mixer, color grading, detail, optics and geometry, in a panel beside the canvas
+- Levels (with Auto), Curves, Hue/Saturation, Exposure, Gradient Map, Grain, Black & White, Color Balance and Invert
+- Gaussian Blur and Motion Blur that spread past a layer's edges
+- Add Noise, Vignette, Bloom / Glow, Dither, Scanlines, Tonal Contrast, Lens Correction and Remove Background
+- Live previews, limited to the selection when there is one
+- Last Filter (⌃⌘F) runs the last filter again with the same settings
 
-在 Finder 里 **右键点击 `Compositor.app` → 打开** → 弹窗里再点一次「打开」。
-这条路径只对这一次生效，之后正常双击即可。
+### Canvas and files
+- Multiple projects in tabs
+- Search Commands (⌘F): find every menu command and tool by name, as in Raycast or Obsidian, and run it with Return
+- Toggle Fullscreen (F): the canvas alone on black over the whole screen, with every panel put away; F or Esc brings them back
+- Rulers (⌘R), guides dragged from them, a layout grid with adjustable spacing and subdivisions, and Snap To for guides, grid, layers and document bounds
+- Crop with snapping, ratios including 3:4 and 9:16, and Option for symmetric cropping; with a selection, the crop starts at it
+- Canvas Size, Image Size and Trim
+- A Navigator minimap in the canvas's corner from 300% zoom: the whole document in small with a box around the view; click or drag to move there (View › Navigator)
+- Sharp high-quality downsampling when zoomed out, and a pixel grid when zoomed in
+- Import JPEG, PNG, HEIC, TIFF, SVG, camera RAW (with a develop step first) and Photoshop PSD and PSB (8-bit RGB; not CMYK). Photoshop folders, masks, blend modes, fill rectangles/ellipses, and simple horizontal text stay editable; other vectors and vertical text become pixels. A conversion report is shown before anything is applied.
+- Large documents: the memory budget scales with your Mac, and a Photoshop file too big to open has its layers cropped to the canvas instead
+- Export PNG (⇧⌘E), Export JPEG (⇧⌥⌘S), and Export As (⇧⌥⌘W) for PNG, JPEG or a one-page PDF at the print size, scaled if you like, with a live preview, JPEG quality and file size; Copy Merged
+- Keep working while a project saves
+- Photoshop-style keyboard shortcuts throughout, remappable in Edit > Keyboard Shortcuts
+- Drag a number's label to scrub its value, as in Photoshop
+- Automatic updates, signed and notarized
 
-**方法二：清除隔离属性（批量分发时用这个）**
-
-隔离属性是浏览器下载时打上的标记，清掉它 Gatekeeper 就不会再拦：
-
-```sh
-# 把 APP_PATH 换成实际路径
-xattr -dr com.apple.quarantine /Applications/Compositor.app
-```
-
-较新的 macOS 还会额外打上 `com.apple.provenance` 属性。可以一并删掉：
-
-```sh
-xattr -dr com.apple.provenance /Applications/Compositor.app
-```
-
-> 该属性在部分系统上受保护，若报 `Operation not permitted` 属正常现象——
-> 删掉 `com.apple.quarantine` 通常已经足够。
-
-**方法三：系统设置里放行（一次性，对所有未签名应用生效）**
-
-「系统设置 › 隐私与安全性」→ 往下滚到「安全性」→ 点「仍要打开」。
-
-> 如果这一项是灰的，说明你还没先尝试过打开它——Gatekeeper 会在你尝试打开之后才把按钮放出来。
-
-**自己重新构建的话**，用仓库里的脚本即可，它已经把 ad-hoc 重签一并做好了：
-
-```sh
-bash scripts/package-adhoc-dmg.sh
-```
-
-> 补充：`scripts/release.sh`（上游原版）需要 Developer ID 证书与公证凭据，
-> 没有证书时用不了，别在这条路上浪费时间。
-
-## 功能
-
-### 图层
-- 图层与文件夹，各自带不透明度，并按 Photoshop 的全套混合模式顺序排列——文件夹的不透明度会作用于其内部所有内容
-- 图层蒙版：可涂抹、填充、反相、模糊、羽化，且范围超出图层本身的像素；可链接/解除链接，从而单独变换蒙版
-- 剪贴蒙版与文件夹蒙版
-- 调整图层：色相/饱和度、色阶、曲线、曝光、渐变映射、颗粒、黑白、色彩平衡、反相、高斯模糊、动感模糊、降噪
-- 图层样式：描边、投影、颜色叠加、内阴影、外发光、内发光——全部在 GPU 上实时渲染，可随时修改
-- 向下合并、合并图层、合并组 (⌘E)
-- 复制、内联重命名、拖拽重排与嵌套；启用链接或拖拽即复制；图层面板支持右键菜单
-- 整图层与文件夹的复制粘贴 (⌘C/⌘V 且无选区)，可在同一工程内或跨工程之间复制，也可直接拖拽
-
-### 变换
-- 非破坏性的移动、缩放、旋转与翻转——图片永远保持原始分辨率
-- 自由变形 (⌘-拖动手柄)，按住 Shift 锁定区间内一项
-- 多图层或整个文件夹可一起变换
-- 吸附到画布、图层边与中心，配合参考线使用
-- 位置、尺寸、缩放、角度的精确数值，按方向键步进
-- 水平/垂直翻转图层、水平/垂直翻转画布
-
-### 选区
-- 矩形与椭圆选框、自由与多边形套索，以及魔棒工具——魔棒按颜色选取，对象选择跟踪你点击的任何对象（Tab 在两模式间切换）
-- 选择主体，以及扩展、收缩、羽化选区
-- 选区相加与相减、移动轮廓、移动或复制选区内的像素
-- 将图层像素或蒙版载入选区
-- 内容识别填充，也可用于把图像延伸超出原边界
-
-### 绘画与修饰
-- 画笔带尺寸、硬度、高度与平滑，绘制或擦除模式 (B/E)，按住 Shift 画直线
-- 污点修复画笔（内容识别）
-- 仿制图章，可对齐或不对齐，可从一个图层或全部图层取样
-- 模糊工具，可作用于像素或蒙版
-- 渐变工具与形状工具（矩形、圆角矩形、椭圆、直线），保持可编辑而非栅格化
-- 文字工具 (T)：在可拖动、可调整大小的段落框中内联多行编辑；字体、尺寸、颜色、对齐与字距在工具栏内；可变换文字并用作剪贴蒙版
-- 吸管与完整的颜色选择器
-
-### 调整与滤镜
-- Camera Raw 滤镜：光线、颜色、曲线、颜色混合、调色、细节、光学、几何，置于画布侧边的面板中
-- 色阶（带自动）、曲线、色相/饱和度、曝光、渐变映射、颗粒、黑白、色彩平衡、反相
-- 高斯模糊、动感模糊，可超出图层边缘
-- 添加杂色、晕影、辉光、色调对比、镜头校正、移除背景
-- 实时预览，有选区时仅作用于选区
-
-### 画布与文件
-- 标签页式多工程
-- 标尺 (⌘R)、从中拖出的参考线、可调间距与分段的布局网格，以及对参考线、网格、图层与画布边界的吸附
-- 裁剪含吸附、预设比例（3:4、9:16 等），按住 Option 可对称裁剪；已有选区时从选区开始裁剪
-- 画布大小、图像大小、裁掉边缘
-- 缩小时的高质量降采样，缩放至足够大时显示像素网格
-- 支持 JPEG、PNG、HEIC、TIFF、SVG、相机 RAW（需先执行显影），以及 Photoshop PSD 与 PSB（8-bit RGB，不支持 CMYK）的导入。Photoshop 的文件夹、蒙版、混合模式、填充矩形/椭圆、简单水平文字保持可编辑；其他矢量与垂直文字会栅格化为像素。开始导入前会显示转换报告
-- 大文档：内存预算会按你的 Mac 自动调整；太大的 Photoshop 文件无法打开时，其图层会被裁剪到画布范围
-- JPEG 导出含实时预览 (⇧⌥⌘S)；合并拷贝
-- 工程存储中仍可继续编辑
-- 全程仿照 Photoshop 的快捷键风格，可在 Edit > Keyboard Shortcuts 中重新映射
-- 像 Photoshop 那样，可以拖动数值旁边的标签来刮擦调整
-- 自动更新，已签名并公证
-
-### 与 AI agent 协作
-- AI agent 与脚本可以直接构造、修改工程：`.comp` 是一个装满 PNG 图层与清单的文件夹，已打开的工程会在被写入时实时刷新。参见 [Writing Compositor projects](docs/writing-comp-files.md)
+### Works with AI agents
+- AI agents and scripts can build and edit projects directly: a `.comp` is a folder of PNG layers and a manifest, and an open project updates live as it's written. See [Writing Compositor projects](docs/writing-comp-files.md)
 
 ## Requirements
 
-- macOS 26.0 或更新版本，运行于 Apple Silicon Mac
-- Xcode 26 或更新版本（用于从源码构建）
+- macOS 26.0 or later on a Mac with Apple silicon
+- Xcode 26 or later (to build from source)
 
-## 构建
+## Translations
 
-用 Xcode 打开 `Compositor.xcodeproj`，运行 **Compositor** scheme 即可。
+Compositor is English only for now, and translation pull requests aren't being accepted. It's maintained by one person, every new string would need translating from then on, and translations in languages I don't read can't be reviewed. I'll revisit this once the app settles; until then, please don't open localization PRs.
 
-## 简体中文本地化 / Simplified Chinese Localization
+## Building
 
-> 🌐 [English](#simplified-chinese-localization) ｜ 简体中文（当前文件）
+Open `Compositor.xcodeproj` and run the **Compositor** scheme.
 
-本仓库是上游 [robbietilton/Compositor](https://github.com/robbietilton/Compositor) 的简体中文本地化分支，
-在上游英文版之上叠加了一套完整的界面汉化。**应用逻辑、文件格式、工程文件（`.comp`）与 manifest 的读写完全未改动**，
-所有变更都局限在「显示层」与「翻译资源」。
+## Releasing
 
-### 界面文案
+`scripts/release.sh` builds a Release version, signs it with Developer ID, notarizes and staples it, and packages it into `dist/Compositor-<version>.dmg`.
 
-界面文案集中在单一文件 **`Compositor/Localizable.xcstrings`**（Xcode String Catalog），共 926 条 zh-Hans 译文。
-源码里保留英文原文，通过 `L10n.swift` 的统一入口取词：
+It needs, all kept outside this repository:
 
-```swift
-L10n.string("Brush")     // AppKit：NSMenuItem / toolTip / NSTextField
-L10n.text("Brush")       // SwiftUI：Text
-```
-
-默认语言跟随系统，可在「系统设置 › 通用 › 语言与地区 › 应用程序」里为 Compositor 单独切换回英文。
-
-### 一条硬性原则
-
-> **英文字符串绝不能流进「被比较」或「被持久化」的位置。**
-
-这条原则决定了整个改动的形态。翻译只发生在**显示路径**上；凡是参与相等比较、作为字典键、
-或写入 `.comp` / manifest / `UserDefaults` 的字符串，一律保持英文原样。违反它不会崩溃，
-而是**静默失效**——功能悄悄坏掉，最难排查。
-
-典型的持久化位置包括：混合模式 `blendMode`、调整类型 `adjustment.kind`、
-曲线/色阶通道、`transform.sampling`、HSV 范围（同时用作 JSON 字典键）、文字对齐方式。
-
-### 上游合并时最需要留意的几处
-
-为了让日后合并上游尽量少冲突，下面几处把「显示值」与「身份值」主动拆开了。
-它们是**纯重构、行为不变**，即使上游不接受这些改动，汉化本身也不依赖它们：
-
-| 位置 | 原来的写法 | 改后 |
-|---|---|---|
-| `UI/BlendModePicker.swift` | `NSMenuItem(title: rawValue)`，再靠 `title` 反查枚举 | 身份走 `representedObject`，标题走 `localizedName` |
-| `UI/KeyboardShortcuts.swift` | `id = "\(group):\(title)"`，`group` 还参与逻辑比较 | `id` 与比较保持英文，新增 `displayTitle` / `displayGroup` 供显示 |
-| `Document/DocumentHistory.swift` | `beginEdit(_ name: String)` | 形参改为 `String.LocalizationValue`，撤销名在读取时才解析 |
-| `ContentView.swift` | 约 2,700 字符的嵌套三元状态提示 | 改写为 `switch`，逐分支本地化 |
-
-### 辅助脚本
-
-```sh
-python3 scripts/gen-xcstrings.py    # 扫描源码，重新生成 xcstrings 骨架
-bash    scripts/audit-localization.sh  # 校验键与源码是否对得上
-bash    scripts/package-adhoc-dmg.sh   # 打 ad-hoc 签名的 DMG（无需证书与公证）
-```
-
-### 提交历史
-
-改动按主题分成若干独立提交，便于上游按需取用或整体 `revert`：
-
-```
-b187379  prepare for localization without changing behavior   ← 纯重构，上游友好
-b6250d3  route display sites through the catalog
-ba82f1d  localize the interface in Simplified Chinese         ← 主体
-dc2ddca  catch the strings the first pass missed
-15786f8  translate documentation to Simplified Chinese
-```
-
-注释汉化**已经在 `main` 上**（合并自 `l10n-comments`，提交见下方历史）。它把 10 个
-核心文件的注释翻成中文，覆盖的恰好是最容易与上游打架的那几个（`EditorCanvas.swift`
-一个就 677 行），功能价值却为零——这意味着每次同步上游，冲突面会比纯汉化版本大一倍。
-
-> 若想回到「只汉化界面、注释保持英文」的轻量版本，`l10n-comments` 分支仍在，
-> 以 `4d81eb5` 为基准 revert 掉那个合并提交即可（该分支的合并是单独的 `--no-ff`
-> 提交，不与汉化主体交织）。
-
-### 同步上游新版本
-
-```sh
-git fetch upstream
-git checkout -b sync/1.5.0 upstream/main
-git rebase sync/1.5.0 main
-
-# 解完冲突后必跑这两条 —— 上游新增的英文文案在 catalog 里没有对应键时，
-# SwiftUI 会静默显示英文原文，不报错，只有审计脚本查得出来：
-python3 scripts/gen-xcstrings.py       # 扫源码，把新键加进 catalog
-bash    scripts/audit-localization.sh   # 列出漏翻的文案
-
-xcodebuild -project Compositor.xcodeproj -scheme Compositor \
-           -destination 'platform=macOS' test
-```
-
-仓库已开启 `rerere`：解过的冲突会被记住，下次上游改动相似时自动复用解法。
-`upstream` 被配置为**只读** remote（push 地址指向 `DISABLED://`），结构上杜绝误推
-上游——要推只推 `origin`。
-
-
-## 发布
-
-`scripts/release.sh` 会构建 Release 版本、用 Developer ID 签名、做公证并打固，最终输出 `dist/Compositor-<version>.dmg`。
-
-它需要以下资源（全部保存在仓库外）：
-
-- 一份 **Developer ID Application** 证书，保存在登录钥匙串里
-- 通过 `xcrun notarytool store-credentials "compositor-notary" …` 保存的公证凭据
-- [`create-dmg`](https://github.com/create-dmg/create-dmg)（`brew install create-dmg`）
+- a **Developer ID Application** certificate in the login keychain
+- notarization credentials saved with `xcrun notarytool store-credentials "compositor-notary" …`
+- [`create-dmg`](https://github.com/create-dmg/create-dmg) (`brew install create-dmg`)
 
 ## License
 
-MIT —— 见 [LICENSE](LICENSE)。
+MIT — see [LICENSE](LICENSE).

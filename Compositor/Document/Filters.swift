@@ -11,6 +11,7 @@ nonisolated enum FilterKind: String, CaseIterable, Sendable {
     case vignette = "Vignette"
     case bloomGlow = "Bloom / Glow"
     case dither = "Dither"
+    case scanlines = "Scanlines"
     case tonalContrast = "Tonal Contrast"
     case lensCorrection = "Lens Correction"
     case cameraRaw = "Camera Raw Filter"
@@ -23,6 +24,8 @@ nonisolated enum FilterKind: String, CaseIterable, Sendable {
     case blackWhite = "Black & White"
     case colorBalance = "Color Balance"
     var isAutomatic: Bool { self == .contentAwareFill || self == .removeBackground }
+    /// The Filter menu's own filters, which Last Filter can run again; not Content-Aware Fill or the Image menu's.
+    var repeatsAsLastFilter: Bool { self != .contentAwareFill && !isImageAdjustment }
     /// Color adjustments: in the Image menu (and editable as adjustment layers), not under Filter.
     var isImageAdjustment: Bool {
         self == .curves || self == .exposure || self == .gradientMap || self == .grain
@@ -77,6 +80,7 @@ nonisolated struct FilterSettings: Equatable, Sendable {
     var blackWhite = BlackWhiteSettings()
     var colorBalance = ColorBalanceSettings()
     var dither = DitherSettings()
+    var scanlines = ScanlinesSettings()
     var cameraRaw = CameraRawSettings()
     /// Remove Background: Basic is the quick subject mask; Advanced refines it (see the three settings below).
     var backgroundQuality: BackgroundQuality = .basic
@@ -116,6 +120,7 @@ nonisolated struct FilterSettings: Equatable, Sendable {
         result.gradientMap = gradientMap.normalized
         result.grain = grain.normalized
         result.dither = dither.normalized
+        result.scanlines = scanlines.normalized
         result.cameraRaw = cameraRaw.normalized
         return result
     }
@@ -196,6 +201,7 @@ nonisolated enum PixelFilter {
         // Grain sits in layer pixels; the job's seed gives each application its own pattern.
         case .grain: image = try settings.grain.apply(job.image, unitsPerPixel: 1 / job.scale, seed: job.seed)
         case .dither: image = try settings.dither.apply(job.image)
+        case .scanlines: image = try settings.scanlines.apply(job.image)
         case .removeBackground:
             image = try SubjectRemoval.run(job.image, settings: settings)
         case .contentAwareFill:
@@ -273,6 +279,8 @@ nonisolated enum PixelFilter {
 @Observable
 final class FilterEdit {
     let kind: FilterKind
+    /// Filter › Last Filter, applied straight away with the settings it had.
+    var repeating = false
     let layerID: UUID
     let original: ImportedImage
     let transform: LayerTransform
@@ -426,8 +434,9 @@ final class FilterEdit {
     private static func prepared(kind: FilterKind, from source: CGImage, placed: LayerTransform) throws
         -> (mapping: CGAffineTransform, previewSource: CGImage, previewScale: CGFloat, previewMapping: CGAffineTransform) {
         let mapping = BrushRaster.pixelToDocument(placed, width: source.width, height: source.height)
-        // Noise, grain and dither preview at full size: made on a smaller copy they would look coarser once enlarged.
-        let factor = [.addNoise, .grain, .dither, .contentAwareFill, .removeBackground].contains(kind)
+        // Noise, grain, dither and scanlines preview at full size: made on a smaller copy they would look coarser once
+        // enlarged.
+        let factor = [.addNoise, .grain, .dither, .scanlines, .contentAwareFill, .removeBackground].contains(kind)
             ? 1 : min(1, previewLimit / CGFloat(max(source.width, source.height)))
         guard factor < 1 else { return (mapping, source, 1, mapping) }
         let w = max(1, Int(CGFloat(source.width) * factor)), h = max(1, Int(CGFloat(source.height) * factor))
@@ -476,7 +485,8 @@ extension EditorSession {
     var canContentAwareFill: Bool {
         canAdjustColors && !isMaskSelected && selection?.isEmpty == false && filterEdit == nil && hueSaturation == nil
     }
-    func beginFilter(_ kind: FilterKind) {
+    /// `repeating` is Last Filter: the settings go on as they are, without a preview or the panel.
+    func beginFilter(_ kind: FilterKind, repeating: Bool = false) {
         if kind == .contentAwareFill && !canContentAwareFill { return }
         guard filterEdit == nil, hueSaturation == nil, kind == .vignette ? canVignette : canAdjustColors else { NSSound.beep(); return }
         if gradientEdit != nil {
@@ -508,9 +518,26 @@ extension EditorSession {
             let edit = try FilterEdit(kind: kind, layer: layer, selection: selection?.clip(canvas: document.size), settings: settings, growingTo: area)
             if fillsCanvas { edit.canvas = canvas }
             edit.startedEmpty = startedEmpty
+            edit.repeating = repeating
             filterEdit = edit
-            updateFilter(edit.settings, preview: true)
+            // An automatic filter commits what its preview made, so it still needs one.
+            updateFilter(edit.settings, preview: !repeating || kind.isAutomatic)
         } catch { brushError = error.localizedDescription }
+    }
+
+    /// Filter › Last Filter (⌘F): the last filter applied, again, with the same settings and no panel, as in Photoshop.
+    var canRepeatLastFilter: Bool {
+        guard let lastFilter, filterEdit == nil, hueSaturation == nil else { return false }
+        return lastFilter == .vignette ? canVignette : canAdjustColors
+    }
+    func repeatLastFilter() async {
+        guard let kind = lastFilter, canRepeatLastFilter else { NSSound.beep(); return }
+        if gradientEdit != nil { await commitGradient() }
+        beginFilter(kind, repeating: true)
+        guard let edit = filterEdit, edit.repeating else { return }
+        await commitFilter()
+        // Nothing to apply (a zero amount), or it couldn't be: don't leave it open with no panel to close it.
+        if filterEdit === edit { cancelFilter() }
     }
 
     func updateFilter(_ settings: FilterSettings, preview: Bool) {
@@ -611,6 +638,7 @@ extension EditorSession {
         edit.committing = true
         edit.previewTask?.cancel()
         if edit.kind != .cameraRaw { filterSettings = edit.settings }
+        if edit.kind.repeatsAsLastFilter { lastFilter = edit.kind }
         isProjectBusy = true
         // The preview stays up until the result is on the layer, so the canvas never flashes the original.
         defer { filterEdit = nil; isProjectBusy = false; brushRevision += 1 }
