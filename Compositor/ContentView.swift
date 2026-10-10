@@ -172,7 +172,7 @@ struct ContentView: View {
         // The toolbar itself is hidden and shown by the window (see `toggleCanvasOnly`), which lays its buttons out
         // again properly; hidden here instead, it came back with the tabs over the window buttons.
         .ignoresSafeArea(.container, edges: session.canvasOnly ? .top : [])
-        .navigationTitle(session.projectURL?.deletingPathExtension().lastPathComponent ?? "Untitled")
+        .navigationTitle(session.projectURL?.deletingPathExtension().lastPathComponent ?? L10n.string("Untitled"))
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button { requestNewCanvas() } label: { Label("New canvas", systemImage: "plus") }
